@@ -52,12 +52,13 @@ need to:
 
 1. Handle continuation frames and fragmented messages
 2. Handle ping/pong frames
-3. Handle close frames and provided a terminate callback
+3. Handle close frames and provide a terminate callback
 4. Close the connection in a number of error cases (malformed headers,
 etc).
 5. Add tests!! (hint hint)
 6. Add a certificate verification callback (and stop using
 `verify_none` by default)
+7. Allow the client handler to close the connection
 
 This is being released without the above functionality in case it is
 useful as is for benchmarking or debugging as mentioned above (this is
