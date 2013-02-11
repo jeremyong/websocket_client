@@ -84,8 +84,7 @@ websocket_handshake(State = #state{path = Path, host = Host}, HandlerState) ->
     Socket = State#state.socket,
     Transport:send(Socket, Handshake),
     {ok, HandshakeResponse} = Transport:recv(Socket, 0, 6000),
-    ok = validate_handshake_response(HandshakeResponse, Key),
-    %% @todo actually check handshake response
+    validate_handshake(HandshakeResponse, Key),
     case Socket of
         {sslsocket, _, _} ->
             ssl:setopts(Socket, [{active, true}]);
@@ -120,8 +119,11 @@ generate_ws_key() ->
     random:seed(now()),
     base64:encode_to_string(crypto:rand_bytes(16)).
 
-validate_handshake_response(HandshakeResponse, Key) ->
-    io:format("~nReceived handshake response:~n~p~n", [HandshakeResponse]),
+-spec validate_handshake(HandshakeResponse :: binary(), Key :: list()) ->
+    ok.
+validate_handshake(HandshakeResponse, Key) ->
+    {match, [Challenge]} = re:run(HandshakeResponse, ".*Sec-WebSocket-Accept: (.*)\\r\\n.*",
+                                  [{capture, [1], list}]),
     Challenge = base64:encode(crypto:sha(
                                 << Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>
                                )),
