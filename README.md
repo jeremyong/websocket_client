@@ -33,7 +33,16 @@ websocket_info(start, State) ->
 ```
 
 The above code will send messages to the echo server that count up
-from 1. It will also print all replies from the server.
+from 1. It will also print all replies from the server:
+
+```
+Received msg <<"this is message 1">>
+Received msg <<"hello, this is message #3">>
+Received msg <<"hello, this is message #4">>
+Received msg <<"hello, this is message #5">>
+Received msg <<"hello, this is message #6">>
+...
+```
 
 Erlang is typically used to write server applications. Now that
 applications like `cowboy` supporting websocket applications are more
@@ -59,6 +68,9 @@ etc).
 6. Add a certificate verification callback (and stop using
 `verify_none` by default)
 7. Allow the client handler to close the connection
+8. Provide additional arities of the `start_link` function to supply
+a default port, path, protocol, or all the above
+9. Send ping frames on a configurable set timeout
 
 This is being released without the above functionality in case it is
 useful as is for benchmarking or debugging as mentioned above (this is

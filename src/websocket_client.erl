@@ -33,7 +33,7 @@
                  Args :: list()) ->
     pid().
 start_link(Handler, Protocol, Host, Port, Path, Args) ->
-    spawn_link(erlang_ws_client, ws_client_init, [Handler, Protocol, Host, Port, Path, Args]).
+    spawn_link(?MODULE, ws_client_init, [Handler, Protocol, Host, Port, Path, Args]).
 
 -spec ws_client_init(Handler :: module(), Protocol :: protocol(),
                      Host :: list(), Port :: integer(), Path :: list(),
@@ -70,20 +70,21 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
 
 -spec websocket_handshake(State :: tuple(), HandlerState :: any()) ->
     ok.
-websocket_handshake(State, HandlerState) ->
+websocket_handshake(State = #state{path = Path, host = Host}, HandlerState) ->
     Key = generate_ws_key(),
-    Handshake = "GET " ++ State#state.path ++ " HTTP/1.1\r\n" ++
-        "Host: " ++ State#state.host ++ "\r\n" ++
+    Handshake = "GET " ++ Path ++ " HTTP/1.1\r\n" ++
+        "Host: " ++ Host ++ "\r\n" ++
         "Upgrade: websocket\r\n" ++
         "Connection: Upgrade\r\n" ++
         "Sec-WebSocket-Key: " ++ Key ++ "\r\n" ++
-        "Origin: " ++ State#state.host ++ "\r\n" ++
+        "Origin: " ++ Host ++ "\r\n" ++
         "Sec-WebSocket-Protocol: \r\n" ++
         "Sec-WebSocket-Version: 13\r\n\r\n",
     Transport = State#state.transport,
     Socket = State#state.socket,
     Transport:send(Socket, Handshake),
     {ok, HandshakeResponse} = Transport:recv(Socket, 0, 6000),
+    ok = validate_handshake_response(HandshakeResponse, Key),
     %% @todo actually check handshake response
     case Socket of
         {sslsocket, _, _} ->
@@ -118,6 +119,13 @@ websocket_loop(State = #state{remaining = Remaining, socket = Socket},
 generate_ws_key() ->
     random:seed(now()),
     base64:encode_to_string(crypto:rand_bytes(16)).
+
+validate_handshake_response(HandshakeResponse, Key) ->
+    io:format("~nReceived handshake response:~n~p~n", [HandshakeResponse]),
+    Challenge = base64:encode(crypto:sha(
+                                << Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>
+                               )),
+    ok.
 
 -spec websocket_opcode(opcode() | integer()) ->
     integer() | opcode().
