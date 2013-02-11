@@ -35,6 +35,7 @@
 start_link(Handler, Protocol, Host, Port, Path, Args) ->
     spawn_link(?MODULE, ws_client_init, [Handler, Protocol, Host, Port, Path, Args]).
 
+%% @doc Create socket, execute handshake, and enter loop
 -spec ws_client_init(Handler :: module(), Protocol :: protocol(),
                      Host :: list(), Port :: integer(), Path :: list(),
                      Args :: list()) ->
@@ -56,7 +57,8 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                                         {packet, 0}
                                        ], 6000);
                        gen_tcp ->
-                           gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, 0}], 6000)
+                           gen_tcp:connect(Host, Port,
+                                           [binary, {active, false}, {packet, 0}], 6000)
                    end,
     State = #state{
       host = Host,
@@ -66,8 +68,16 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
       handler = Handler,
       socket = Socket
      },
-    websocket_handshake(State, HandlerState).
+    ok = websocket_handshake(State, HandlerState),
+    case Socket of
+        {sslsocket, _, _} ->
+            ssl:setopts(Socket, [{active, true}]);
+        _ ->
+            inet:setopts(Socket, [{active, true}])
+    end,
+    websocket_loop(State, HandlerState, <<>>).
 
+%% @doc Send http upgrade request and validate handshake response challenge
 -spec websocket_handshake(State :: tuple(), HandlerState :: any()) ->
     ok.
 websocket_handshake(State = #state{path = Path, host = Host}, HandlerState) ->
@@ -84,15 +94,9 @@ websocket_handshake(State = #state{path = Path, host = Host}, HandlerState) ->
     Socket = State#state.socket,
     Transport:send(Socket, Handshake),
     {ok, HandshakeResponse} = Transport:recv(Socket, 0, 6000),
-    validate_handshake(HandshakeResponse, Key),
-    case Socket of
-        {sslsocket, _, _} ->
-            ssl:setopts(Socket, [{active, true}]);
-        _ ->
-            inet:setopts(Socket, [{active, true}])
-    end,
-    websocket_loop(State, HandlerState, <<>>).
+    validate_handshake(HandshakeResponse, Key).
 
+%% @doc Main loop
 -spec websocket_loop(State :: tuple(), HandlerState :: any(), Buffer :: binary()) ->
     ok.
 websocket_loop(State = #state{remaining = Remaining, socket = Socket},
@@ -113,12 +117,14 @@ websocket_loop(State = #state{remaining = Remaining, socket = Socket},
     end,
     ok.
 
+%% @doc Key sent in initial handshake
 -spec generate_ws_key() ->
     list().
 generate_ws_key() ->
     random:seed(now()),
     base64:encode_to_string(crypto:rand_bytes(16)).
 
+%% @doc Validate handshake response challenge
 -spec validate_handshake(HandshakeResponse :: binary(), Key :: list()) ->
     ok.
 validate_handshake(HandshakeResponse, Key) ->
@@ -129,6 +135,7 @@ validate_handshake(HandshakeResponse, Key) ->
                                )),
     ok.
 
+%% @doc Mapping from opcode to opcode name and vice versa
 -spec websocket_opcode(opcode() | integer()) ->
     integer() | opcode().
 websocket_opcode(text) -> 1;
@@ -136,26 +143,31 @@ websocket_opcode(1) -> text;
 websocket_opcode(binary) -> 2;
 websocket_opcode(2) -> binary.
 
+%% @doc Length is less 126 bytes
 retrieve_frame(State, HandlerState,
                << 1:1, 0:3, Opcode:4, 0:1, Len:7, Rest/bits >>)
   when Len < 126 ->
     retrieve_frame(State, HandlerState, Opcode, Len, Rest, <<>>);
+%% @doc Length is a 2 byte integer
 retrieve_frame(State, HandlerState,
                << 1:1, 0:3, Opcode:4, 0:1, 126:7, Len:16, Rest/bits >>)
   when Len > 125, Opcode < 8 ->
     retrieve_frame(State, HandlerState, Opcode, Len, Rest, <<>>);
+%% @doc Length is a 63 bit integer
 retrieve_frame(State, HandlerState,
                << 1:1, 0:3, Opcode:4, 0:1, 127:7, Len:63, Rest/bits >>)
   when Len > 16#ffff, Opcode < 8 ->
     retrieve_frame(State, HandlerState, Opcode, Len, Rest, <<>>);
+%% @doc Need more data to read length properly
 retrieve_frame(State, HandlerState, Data) ->
-    %% Wait for more data
     websocket_loop(State, HandlerState, Data).
 
+%% @doc Length known and still missing data
 retrieve_frame(State, HandlerState, Opcode, Len, Data, Buffer) when byte_size(Data) < Len ->
     Remaining = Len - byte_size(Data),
     websocket_loop(State#state{remaining = Remaining, opcode = Opcode},
                    HandlerState, << Buffer/bits, Data/bits >>);
+%% @doc Length known and remaining data is appended to the buffer
 retrieve_frame(State, HandlerState, Opcode, Len, Data, Buffer) ->
     << Payload:Len/binary, Rest/bits >> = Data,
     Handler = State#state.handler,
@@ -164,6 +176,7 @@ retrieve_frame(State, HandlerState, Opcode, Len, Data, Buffer) ->
     HandlerState1 = handle_response(State, HandlerResponse),
     websocket_loop(State#state{remaining = undefined}, HandlerState1, Rest).
 
+%% @doc Handles return values from the callback module
 handle_response(_State = #state{socket = Socket, transport = Transport},
                 {reply, Frame, HandlerState}) ->
     ok = Transport:send(Socket, encode_frame(Frame)),
@@ -171,6 +184,7 @@ handle_response(_State = #state{socket = Socket, transport = Transport},
 handle_response(_, {ok, HandlerState}) ->
     HandlerState.
 
+%% @doc Encodes the data with a header (including a masking key) and masks the data
 -spec encode_frame(frame()) ->
     binary().
 encode_frame({Type, Payload}) ->
@@ -183,6 +197,8 @@ encode_frame({Type, Payload}) ->
     MaskedPayload = mask_payload(MaskingKey, Payload),
     << Header/binary, MaskedPayload/binary >>.
 
+%% @doc The payload is masked using a masking key byte by byte.
+%% Can do it in 4 byte chunks to save time until there is left than 4 bytes left
 mask_payload(MaskingKey, Payload) ->
     mask_payload(MaskingKey, Payload, <<>>).
 mask_payload(_, <<>>, Acc) ->
@@ -203,6 +219,8 @@ mask_payload(MaskingKey, << D:8 >>, Acc) ->
     T = D bxor MaskingKeyPart,
     << Acc/binary, T:8 >>.
 
+%% @doc Encode the payload length as binary in a variable number of bits.
+%% See RFC Doc for more details
 payload_length_to_binary(Len) when Len =<125 ->
     << Len:7 >>;
 payload_length_to_binary(Len) when Len =< 16#ffff ->
