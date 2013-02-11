@@ -10,8 +10,8 @@
         ]).
 
 start_link() ->
-    crypto:start(),
     ssl:start(),
+    crypto:start(),
     websocket_client:start_link(?MODULE, wss, "echo.websocket.org", 443, "/", []).
 
 init([]) ->
