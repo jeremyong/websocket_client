@@ -13,5 +13,5 @@
         | {reply, websocket_client:frame(), State}
         | {close, binary(), State}.
 
--callback websocket_terminate({close, binary()}, _State) ->
+-callback websocket_terminate({close, integer(), binary()}, _State) ->
     ok.

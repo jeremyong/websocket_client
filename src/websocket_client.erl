@@ -100,9 +100,11 @@ websocket_handshake(State = #state{path = Path, host = Host}) ->
 %% @doc Main loop
 -spec websocket_loop(State :: tuple(), HandlerState :: any(), Buffer :: binary()) ->
     ok.
-websocket_loop(State = #state{remaining = Remaining, socket = Socket},
+websocket_loop(State = #state{handler = Handler, remaining = Remaining, socket = Socket},
                HandlerState, Buffer) ->
     receive
+        {_Closed, Socket} ->
+            Handler:websocket_terminate({close, 0, <<>>}, HandlerState);
         {_TransportType, Socket, Data} ->
             case Remaining of
                 undefined ->
@@ -187,8 +189,12 @@ retrieve_frame(State = #state{handler = Handler, transport = Transport, socket =
             ok
     end,
     case websocket_opcode(Opcode) of
+        close when byte_size(FullPayload) >= 2 ->
+            << CodeBin:2/binary, ClosePayload/binary >> = FullPayload,
+            Code = binary:decode_unsigned(CodeBin),
+            Handler:websocket_terminate({close, Code, ClosePayload}, HandlerState);
         close ->
-            Handler:websocket_terminate({close, FullPayload}, HandlerState);
+            Handler:websocket_terminate({close, 0, <<>>}, HandlerState);
         _ ->
             HandlerResponse = Handler:websocket_handle(
                                 {websocket_opcode(Opcode), FullPayload}, HandlerState),
@@ -200,11 +206,10 @@ handle_response(State = #state{socket = Socket, transport = Transport},
                 {reply, Frame, HandlerState}, Buffer) ->
     ok = Transport:send(Socket, encode_frame(Frame)),
     websocket_loop(State, HandlerState, Buffer);
-%% Don't continue the loop if the client wants to close the connection
-handle_response(#state{socket = Socket, transport = Transport, handler = Handler},
-               {close, Payload, HandlerState}, _Buffer) ->
+handle_response(State = #state{socket = Socket, transport = Transport},
+               {close, Payload, HandlerState}, Buffer) ->
     ok = Transport:send(Socket, encode_frame({close, Payload})),
-    Handler:websocket_terminate({close, Payload}, HandlerState);
+    websocket_loop(State, HandlerState, Buffer);
 handle_response(State, {ok, HandlerState}, Buffer) ->
     websocket_loop(State, HandlerState, Buffer).
 

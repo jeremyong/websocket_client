@@ -19,7 +19,8 @@ init([]) ->
     self() ! start,
     {ok, 1}.
 
-websocket_handle({text, _Msg}, 10) ->
+websocket_handle({text, Msg}, 5) ->
+    io:format("Received msg ~p~n", [Msg]),
     {close, <<>>, 10};
 websocket_handle({text, Msg}, State) ->
     io:format("Received msg ~p~n", [Msg]),
@@ -30,6 +31,7 @@ websocket_handle({text, Msg}, State) ->
 websocket_info(start, State) ->
     {reply, {text, <<"this is message 1">>}, State + 1}.
 
-websocket_terminate({close, _Payload}, State) ->
-    io:format("Websocket closed in state ~p", [State]),
+websocket_terminate({close, Code, Payload}, State) ->
+    io:format("Websocket closed in state ~p wih code ~p and payload ~p~n",
+              [State, Code, Payload]),
     ok.
