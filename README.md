@@ -1,5 +1,15 @@
 # Erlang Websocket Client
 
+## Existing features
+
+1. Client to Server Masking
+2. gen_server like callback behaviour
+3. Handshake validation
+4. tcp and ssl support
+5. Handling of text, binary, ping, pong, and close frames
+
+## Usage
+
 For basic usage, please see the source files in the `examples/`
 directory. Writing a handler is easy:
 
@@ -60,17 +70,12 @@ The client as is is still missing a lot of functionality. We still
 need to:
 
 1. Handle continuation frames and fragmented messages
-2. Handle ping/pong frames
-3. Handle close frames and provide a terminate callback
-4. Close the connection in a number of error cases (malformed headers,
+2. Close the connection in a number of error cases (malformed headers,
 etc).
-5. Add tests!! (hint hint)
-6. Add a certificate verification callback (and stop using
-`verify_none` by default)
-7. Allow the client handler to close the connection
-8. Provide additional arities of the `start_link` function to supply
+3. Add tests!! (hint hint)
+4. Stop using `verify_none` by default
+5. Provide additional arities of the `start_link` function to supply
 a default port, path, protocol, or all the above
-9. Send ping frames on a configurable set timeout
 
 This is being released without the above functionality in case it is
 useful as is for benchmarking or debugging as mentioned above (this is
