@@ -68,7 +68,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
       handler = Handler,
       socket = Socket
      },
-    ok = websocket_handshake(State, HandlerState),
+    ok = websocket_handshake(State),
     case Socket of
         {sslsocket, _, _} ->
             ssl:setopts(Socket, [{active, true}]);
@@ -78,9 +78,9 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
     websocket_loop(State, HandlerState, <<>>).
 
 %% @doc Send http upgrade request and validate handshake response challenge
--spec websocket_handshake(State :: tuple(), HandlerState :: any()) ->
+-spec websocket_handshake(State :: tuple()) ->
     ok.
-websocket_handshake(State = #state{path = Path, host = Host}, HandlerState) ->
+websocket_handshake(State = #state{path = Path, host = Host}) ->
     Key = generate_ws_key(),
     Handshake = "GET " ++ Path ++ " HTTP/1.1\r\n" ++
         "Host: " ++ Host ++ "\r\n" ++
@@ -94,7 +94,8 @@ websocket_handshake(State = #state{path = Path, host = Host}, HandlerState) ->
     Socket = State#state.socket,
     Transport:send(Socket, Handshake),
     {ok, HandshakeResponse} = Transport:recv(Socket, 0, 6000),
-    validate_handshake(HandshakeResponse, Key).
+    validate_handshake(HandshakeResponse, Key),
+    ok.
 
 %% @doc Main loop
 -spec websocket_loop(State :: tuple(), HandlerState :: any(), Buffer :: binary()) ->
@@ -112,8 +113,7 @@ websocket_loop(State = #state{remaining = Remaining, socket = Socket},
         Msg ->
             Handler = State#state.handler,
             HandlerResponse = Handler:websocket_info(Msg, HandlerState),
-            HandlerState1 = handle_response(State, HandlerResponse),
-            websocket_loop(State, HandlerState1, Buffer)
+            handle_response(State, HandlerResponse, Buffer)
     end,
     ok.
 
@@ -128,11 +128,12 @@ generate_ws_key() ->
 -spec validate_handshake(HandshakeResponse :: binary(), Key :: list()) ->
     ok.
 validate_handshake(HandshakeResponse, Key) ->
-    {match, [Challenge]} = re:run(HandshakeResponse, ".*Sec-WebSocket-Accept: (.*)\\r\\n.*",
-                                  [{capture, [1], list}]),
+    BinKey = list_to_binary(Key),
     Challenge = base64:encode(crypto:sha(
-                                << Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>
+                                << BinKey/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>
                                )),
+    {match, [Challenge]} = re:run(HandshakeResponse, ".*Sec-WebSocket-Accept: (.*)\\r\\n.*",
+                                  [{capture, [1], binary}]),
     ok.
 
 %% @doc Mapping from opcode to opcode name and vice versa
@@ -141,7 +142,13 @@ validate_handshake(HandshakeResponse, Key) ->
 websocket_opcode(text) -> 1;
 websocket_opcode(1) -> text;
 websocket_opcode(binary) -> 2;
-websocket_opcode(2) -> binary.
+websocket_opcode(2) -> binary;
+websocket_opcode(ping) -> 9;
+websocket_opcode(8) -> close;
+websocket_opcode(close) -> 8;
+websocket_opcode(9) -> ping;
+websocket_opcode(10) -> pong;
+websocket_opcode(pong) -> 10.
 
 %% @doc Length is less 126 bytes
 retrieve_frame(State, HandlerState,
@@ -168,21 +175,38 @@ retrieve_frame(State, HandlerState, Opcode, Len, Data, Buffer) when byte_size(Da
     websocket_loop(State#state{remaining = Remaining, opcode = Opcode},
                    HandlerState, << Buffer/bits, Data/bits >>);
 %% @doc Length known and remaining data is appended to the buffer
-retrieve_frame(State, HandlerState, Opcode, Len, Data, Buffer) ->
+retrieve_frame(State = #state{handler = Handler, transport = Transport, socket = Socket},
+               HandlerState, Opcode, Len, Data, Buffer) ->
     << Payload:Len/binary, Rest/bits >> = Data,
-    Handler = State#state.handler,
     FullPayload = << Buffer/binary, Payload/binary >>,
-    HandlerResponse = Handler:websocket_handle({websocket_opcode(Opcode), FullPayload}, HandlerState),
-    HandlerState1 = handle_response(State, HandlerResponse),
-    websocket_loop(State#state{remaining = undefined}, HandlerState1, Rest).
+    case websocket_opcode(Opcode) of
+        ping ->
+            %% If a ping is received, send a pong  automatically
+            ok = Transport:send(Socket, encode_frame({pong, FullPayload}));
+        _ ->
+            ok
+    end,
+    case websocket_opcode(Opcode) of
+        close ->
+            Handler:websocket_terminate({close, FullPayload}, HandlerState);
+        _ ->
+            HandlerResponse = Handler:websocket_handle(
+                                {websocket_opcode(Opcode), FullPayload}, HandlerState),
+            handle_response(State#state{remaining = undefined}, HandlerResponse, Rest)
+    end.
 
 %% @doc Handles return values from the callback module
-handle_response(_State = #state{socket = Socket, transport = Transport},
-                {reply, Frame, HandlerState}) ->
+handle_response(State = #state{socket = Socket, transport = Transport},
+                {reply, Frame, HandlerState}, Buffer) ->
     ok = Transport:send(Socket, encode_frame(Frame)),
-    HandlerState;
-handle_response(_, {ok, HandlerState}) ->
-    HandlerState.
+    websocket_loop(State, HandlerState, Buffer);
+%% Don't continue the loop if the client wants to close the connection
+handle_response(#state{socket = Socket, transport = Transport, handler = Handler},
+               {close, Payload, HandlerState}, _Buffer) ->
+    ok = Transport:send(Socket, encode_frame({close, Payload})),
+    Handler:websocket_terminate({close, Payload}, HandlerState);
+handle_response(State, {ok, HandlerState}, Buffer) ->
+    websocket_loop(State, HandlerState, Buffer).
 
 %% @doc Encodes the data with a header (including a masking key) and masks the data
 -spec encode_frame(frame()) ->
