@@ -162,9 +162,9 @@ retrieve_frame(State, HandlerState,
                << 1:1, 0:3, Opcode:4, 0:1, 126:7, Len:16, Rest/bits >>)
   when Len > 125, Opcode < 8 ->
     retrieve_frame(State, HandlerState, Opcode, Len, Rest, <<>>);
-%% @doc Length is a 63 bit integer
+%% @doc Length is a 64 bit integer
 retrieve_frame(State, HandlerState,
-               << 1:1, 0:3, Opcode:4, 0:1, 127:7, Len:63, Rest/bits >>)
+               << 1:1, 0:3, Opcode:4, 0:1, 127:7, 0:1, Len:63, Rest/bits >>)
   when Len > 16#ffff, Opcode < 8 ->
     retrieve_frame(State, HandlerState, Opcode, Len, Rest, <<>>);
 %% @doc Need more data to read length properly
