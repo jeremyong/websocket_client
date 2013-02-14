@@ -104,9 +104,24 @@ websocket_handshake(State = #state{path = Path, host = Host}) ->
     Transport = State#state.transport,
     Socket = State#state.socket,
     Transport:send(Socket, Handshake),
-    {ok, HandshakeResponse} = Transport:recv(Socket, 0, 6000),
+    {ok, HandshakeResponse} = receive_handshake(<<>>, Transport, Socket),
     validate_handshake(HandshakeResponse, Key),
     ok.
+
+%% @doc Blocks and waits until handshake response data is received
+-spec receive_handshake(Buffer :: binary(),
+                        Transport :: module(),
+                        Socket :: term()) ->
+    {ok, binary()}.
+receive_handshake(Buffer, Transport, Socket) ->
+    case re:run(Buffer, ".*\\r\\n\\r\\n") of
+        {match, _} ->
+            {ok, Buffer};
+        _ ->
+            {ok, Data} = Transport:recv(Socket, 0, 6000),
+            receive_handshake(<< Buffer/binary, Data/binary >>,
+                              Transport, Socket)
+    end.
 
 %% @doc Main loop
 -spec websocket_loop(State :: tuple(), HandlerState :: any(),
@@ -153,9 +168,10 @@ validate_handshake(HandshakeResponse, Key) ->
                                 << BinKey/binary,
                                  "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>
                                )),
-    {match, [Challenge]} = re:run(HandshakeResponse,
-                                  ".*Sec-WebSocket-Accept: (.*)\\r\\n.*",
-                                  [{capture, [1], binary}]),
+    {match, [Challenge]} = re:run(
+                             HandshakeResponse,
+                             ".*[s|S]ec-[w|W]eb[s|S]ocket-[a|A]ccept: (.*)\\r\\n.*",
+                             [{capture, [1], binary}]),
     ok.
 
 %% @doc Mapping from opcode to opcode name and vice versa
