@@ -49,7 +49,6 @@ cast(Client, Frame) ->
                      Args :: list()) ->
     pid().
 ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
-    {ok, HandlerState} = Handler:init(Args),
     Transport = case Protocol of
                     wss ->
                         ssl;
@@ -86,6 +85,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
         _ ->
             inet:setopts(Socket, [{active, true}])
     end,
+    {ok, HandlerState} = Handler:init(Args),
     websocket_loop(State, HandlerState, <<>>).
 
 %% @doc Send http upgrade request and validate handshake response challenge
