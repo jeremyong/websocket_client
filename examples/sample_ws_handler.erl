@@ -16,8 +16,8 @@ start_link() ->
     websocket_client:start_link(?MODULE, wss, "echo.websocket.org", 443, "/", []).
 
 init([]) ->
-    self() ! start,
-    {ok, 1}.
+    websocket_client:cast(self(), {text, <<"message 1">>}),
+    {ok, 2}.
 
 websocket_handle({text, Msg}, 5) ->
     io:format("Received msg ~p~n", [Msg]),
@@ -29,7 +29,7 @@ websocket_handle({text, Msg}, State) ->
     {reply, {text, <<"hello, this is message #", BinInt/binary >>}, State + 1}.
 
 websocket_info(start, State) ->
-    {reply, {text, <<"this is message 1">>}, State + 1}.
+    {reply, {text, <<"erlang message received">>}, State}.
 
 websocket_terminate({close, Code, Payload}, State) ->
     io:format("Websocket closed in state ~p wih code ~p and payload ~p~n",

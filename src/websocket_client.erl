@@ -4,9 +4,10 @@
 
 -export([
          start_link/6,
-         ws_client_init/6,
-         encode_frame/1
+         cast/2
         ]).
+
+-export([ws_client_init/6]).
 
 -type protocol() :: ws | wss.
 
@@ -33,7 +34,14 @@
                  Args :: list()) ->
     pid().
 start_link(Handler, Protocol, Host, Port, Path, Args) ->
-    spawn_link(?MODULE, ws_client_init, [Handler, Protocol, Host, Port, Path, Args]).
+    spawn_link(?MODULE, ws_client_init,
+               [Handler, Protocol, Host, Port, Path, Args]).
+
+-spec cast(Client :: pid(), Frame :: frame()) ->
+    ok.
+cast(Client, Frame) ->
+    Client ! {cast, Frame},
+    ok.
 
 %% @doc Create socket, execute handshake, and enter loop
 -spec ws_client_init(Handler :: module(), Protocol :: protocol(),
@@ -58,7 +66,10 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                                        ], 6000);
                        gen_tcp ->
                            gen_tcp:connect(Host, Port,
-                                           [binary, {active, false}, {packet, 0}], 6000)
+                                           [binary,
+                                            {active, false},
+                                            {packet, 0}
+                                           ], 6000)
                    end,
     State = #state{
       host = Host,
@@ -98,19 +109,26 @@ websocket_handshake(State = #state{path = Path, host = Host}) ->
     ok.
 
 %% @doc Main loop
--spec websocket_loop(State :: tuple(), HandlerState :: any(), Buffer :: binary()) ->
+-spec websocket_loop(State :: tuple(), HandlerState :: any(),
+                     Buffer :: binary()) ->
     ok.
-websocket_loop(State = #state{handler = Handler, remaining = Remaining, socket = Socket},
+websocket_loop(State = #state{handler = Handler, remaining = Remaining,
+                              socket = Socket, transport = Transport},
                HandlerState, Buffer) ->
     receive
+        {cast, Frame} ->
+            ok = Transport:send(Socket, encode_frame(Frame)),
+            websocket_loop(State, HandlerState, Buffer);
         {_Closed, Socket} ->
             Handler:websocket_terminate({close, 0, <<>>}, HandlerState);
         {_TransportType, Socket, Data} ->
             case Remaining of
                 undefined ->
-                    retrieve_frame(State, HandlerState, << Buffer/binary, Data/binary >>);
+                    retrieve_frame(State, HandlerState,
+                                   << Buffer/binary, Data/binary >>);
                 _ ->
-                    retrieve_frame(State, HandlerState, State#state.opcode, Remaining, Data, Buffer)
+                    retrieve_frame(State, HandlerState,
+                                   State#state.opcode, Remaining, Data, Buffer)
             end;
         Msg ->
             Handler = State#state.handler,
@@ -132,23 +150,29 @@ generate_ws_key() ->
 validate_handshake(HandshakeResponse, Key) ->
     BinKey = list_to_binary(Key),
     Challenge = base64:encode(crypto:sha(
-                                << BinKey/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>
+                                << BinKey/binary,
+                                 "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>
                                )),
-    {match, [Challenge]} = re:run(HandshakeResponse, ".*Sec-WebSocket-Accept: (.*)\\r\\n.*",
+    {match, [Challenge]} = re:run(HandshakeResponse,
+                                  ".*Sec-WebSocket-Accept: (.*)\\r\\n.*",
                                   [{capture, [1], binary}]),
     ok.
 
 %% @doc Mapping from opcode to opcode name and vice versa
 -spec websocket_opcode(opcode() | integer()) ->
     integer() | opcode().
-websocket_opcode(text) -> 1;
 websocket_opcode(1) -> text;
-websocket_opcode(binary) -> 2;
+websocket_opcode(text) -> 1;
+
 websocket_opcode(2) -> binary;
-websocket_opcode(ping) -> 9;
+websocket_opcode(binary) -> 2;
+
 websocket_opcode(8) -> close;
 websocket_opcode(close) -> 8;
+
 websocket_opcode(9) -> ping;
+websocket_opcode(ping) -> 9;
+
 websocket_opcode(10) -> pong;
 websocket_opcode(pong) -> 10.
 
@@ -172,12 +196,15 @@ retrieve_frame(State, HandlerState, Data) ->
     websocket_loop(State, HandlerState, Data).
 
 %% @doc Length known and still missing data
-retrieve_frame(State, HandlerState, Opcode, Len, Data, Buffer) when byte_size(Data) < Len ->
+retrieve_frame(State, HandlerState, Opcode, Len, Data, Buffer)
+  when byte_size(Data) < Len ->
     Remaining = Len - byte_size(Data),
     websocket_loop(State#state{remaining = Remaining, opcode = Opcode},
                    HandlerState, << Buffer/bits, Data/bits >>);
 %% @doc Length known and remaining data is appended to the buffer
-retrieve_frame(State = #state{handler = Handler, transport = Transport, socket = Socket},
+retrieve_frame(State = #state{
+                 handler = Handler, transport = Transport, socket = Socket
+                },
                HandlerState, Opcode, Len, Data, Buffer) ->
     << Payload:Len/binary, Rest/bits >> = Data,
     FullPayload = << Buffer/binary, Payload/binary >>,
@@ -192,13 +219,16 @@ retrieve_frame(State = #state{handler = Handler, transport = Transport, socket =
         close when byte_size(FullPayload) >= 2 ->
             << CodeBin:2/binary, ClosePayload/binary >> = FullPayload,
             Code = binary:decode_unsigned(CodeBin),
-            Handler:websocket_terminate({close, Code, ClosePayload}, HandlerState);
+            Handler:websocket_terminate({close, Code, ClosePayload},
+                                        HandlerState);
         close ->
             Handler:websocket_terminate({close, 0, <<>>}, HandlerState);
         _ ->
             HandlerResponse = Handler:websocket_handle(
-                                {websocket_opcode(Opcode), FullPayload}, HandlerState),
-            handle_response(State#state{remaining = undefined}, HandlerResponse, Rest)
+                                {websocket_opcode(Opcode), FullPayload},
+                                HandlerState),
+            handle_response(State#state{remaining = undefined},
+                            HandlerResponse, Rest)
     end.
 
 %% @doc Handles return values from the callback module
@@ -213,7 +243,8 @@ handle_response(State = #state{socket = Socket, transport = Transport},
 handle_response(State, {ok, HandlerState}, Buffer) ->
     websocket_loop(State, HandlerState, Buffer).
 
-%% @doc Encodes the data with a header (including a masking key) and masks the data
+%% @doc Encodes the data with a header (including a masking key) and
+%% masks the data
 -spec encode_frame(frame()) ->
     binary().
 encode_frame({Type, Payload}) ->
