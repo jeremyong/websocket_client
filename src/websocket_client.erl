@@ -18,6 +18,7 @@
   | {close, 1000..4999, binary()}.
 
 -record(state, {
+          protocol :: protocol(),
           host :: binary(),
           port :: integer(),
           path ::  binary(),
@@ -71,6 +72,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                                            ], 6000)
                    end,
     State = #state{
+      protocol = Protocol,
       host = Host,
       port = Port,
       path = Path,
@@ -91,14 +93,14 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
 %% @doc Send http upgrade request and validate handshake response challenge
 -spec websocket_handshake(State :: tuple()) ->
     ok.
-websocket_handshake(State = #state{path = Path, host = Host}) ->
+websocket_handshake(State = #state{protocol = Protocol, path = Path, host = Host}) ->
     Key = generate_ws_key(),
     Handshake = "GET " ++ Path ++ " HTTP/1.1\r\n" ++
         "Host: " ++ Host ++ "\r\n" ++
-        "Upgrade: websocket\r\n" ++
+        "Upgrade: WebSocket\r\n" ++
         "Connection: Upgrade\r\n" ++
         "Sec-WebSocket-Key: " ++ Key ++ "\r\n" ++
-        "Origin: " ++ Host ++ "\r\n" ++
+        "Origin: " ++ atom_to_list(Protocol) ++ "://" ++ Host ++ "\r\n" ++
         "Sec-WebSocket-Protocol: \r\n" ++
         "Sec-WebSocket-Version: 13\r\n\r\n",
     Transport = State#state.transport,
