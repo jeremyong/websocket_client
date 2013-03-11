@@ -3,6 +3,9 @@
 -module(websocket_client).
 
 -export([
+         start_link/3,
+         start_link/4,
+         start_link/5,
          start_link/6,
          cast/2
         ]).
@@ -22,6 +25,7 @@
           host :: binary(),
           port :: integer(),
           path ::  binary(),
+          keepalive :: integer(),
           socket = undefined :: inet:socket(),
           transport = undefined :: module(),
           handler :: module(),
@@ -29,6 +33,27 @@
           remaining = undefined :: integer(),
           opcode = undefined :: opcode()
          }).
+
+%% @doc Start the websocket client
+-spec start_link(Handler :: module(), Host :: list(), Args :: list()) ->
+    pid().
+start_link(Handler, Host, Args) ->
+    start_link(Handler, ws, Host, 443, "/", Args).
+
+-spec start_link(Handler :: module(), Protocol :: protocol(),
+                 Host :: list(), Args :: list()) ->
+    pid().
+start_link(Handler, wss, Host, Args) ->
+    start_link(Handler, wss, Host, 443, "/", Args);
+start_link(Handler, ws, Host, Args) ->
+    start_link(Handler, ws, Host, 80, "/", Args).
+
+-spec start_link(Handler :: module(), Protocol :: protocol(),
+                 Host :: list(), Port :: integer(),
+                 Args :: list()) ->
+    pid().
+start_link(Handler, Protocol, Host, Port, Args) ->
+    start_link(Handler, Protocol, Host, Port, "/", Args).
 
 -spec start_link(Handler :: module(), Protocol :: protocol(),
                  Host :: list(), Port :: integer(), Path :: list(),
@@ -38,6 +63,7 @@ start_link(Handler, Protocol, Host, Port, Path, Args) ->
     spawn_link(?MODULE, ws_client_init,
                [Handler, Protocol, Host, Port, Path, Args]).
 
+%% Send a frame asynchronously
 -spec cast(Client :: pid(), Frame :: frame()) ->
     ok.
 cast(Client, Frame) ->
@@ -87,8 +113,14 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
         _ ->
             inet:setopts(Socket, [{active, true}])
     end,
-    {ok, HandlerState} = Handler:init(Args),
-    websocket_loop(State, HandlerState, <<>>).
+    {ok, HandlerState, KeepAlive} = case Handler:init(Args) of
+                                        {ok, HS} ->
+                                            {ok, HS, 45000};
+                                        {ok, HS, KA} ->
+                                            {ok, HS, KA}
+                                    end,
+    erlang:send_after(KeepAlive, self(), keepalive),
+    websocket_loop(State#state{keepalive = KeepAlive}, HandlerState, <<>>).
 
 %% @doc Send http upgrade request and validate handshake response challenge
 -spec websocket_handshake(State :: tuple()) ->
@@ -133,6 +165,10 @@ websocket_loop(State = #state{handler = Handler, remaining = Remaining,
                               socket = Socket, transport = Transport},
                HandlerState, Buffer) ->
     receive
+        keepalive ->
+            ok = Transport:send(Socket, encode_frame({ping, <<>>})),
+            erlang:send_after(State#state.keepalive, self(), keepalive),
+            websocket_loop(State, HandlerState, Buffer);
         {cast, Frame} ->
             ok = Transport:send(Socket, encode_frame(Frame)),
             websocket_loop(State, HandlerState, Buffer);
