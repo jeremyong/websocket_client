@@ -4,9 +4,6 @@
 
 -export([
          start_link/3,
-         start_link/4,
-         start_link/5,
-         start_link/6,
          cast/2
         ]).
 
@@ -35,33 +32,16 @@
          }).
 
 %% @doc Start the websocket client
--spec start_link(Handler :: module(), Host :: list(), Args :: list()) ->
-    pid().
-start_link(Handler, Host, Args) ->
-    start_link(Handler, ws, Host, 443, "/", Args).
-
--spec start_link(Handler :: module(), Protocol :: protocol(),
-                 Host :: list(), Args :: list()) ->
-    pid().
-start_link(Handler, wss, Host, Args) ->
-    start_link(Handler, wss, Host, 443, "/", Args);
-start_link(Handler, ws, Host, Args) ->
-    start_link(Handler, ws, Host, 80, "/", Args).
-
--spec start_link(Handler :: module(), Protocol :: protocol(),
-                 Host :: list(), Port :: integer(),
-                 Args :: list()) ->
-    pid().
-start_link(Handler, Protocol, Host, Port, Args) ->
-    start_link(Handler, Protocol, Host, Port, "/", Args).
-
--spec start_link(Handler :: module(), Protocol :: protocol(),
-                 Host :: list(), Port :: integer(), Path :: list(),
-                 Args :: list()) ->
-    pid().
-start_link(Handler, Protocol, Host, Port, Path, Args) ->
-    spawn_link(?MODULE, ws_client_init,
-               [Handler, Protocol, Host, Port, Path, Args]).
+-spec start_link(URL :: list(), Handler :: module(), Args :: list()) ->
+    {ok, pid()} | {error, term()}.
+start_link(URL, Handler, Args) ->
+  case http_uri:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]) of
+    {ok, {Protocol, _, Host, Port, Path, Query}} ->
+      proc_lib:start_link(?MODULE, ws_client_init,
+               [Handler, Protocol, Host, Port, Path ++ Query, Args]);
+    {error, _} = Error ->
+      Error
+  end.
 
 %% Send a frame asynchronously
 -spec cast(Client :: pid(), Frame :: frame()) ->
@@ -82,7 +62,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                     ws ->
                         gen_tcp
                 end,
-    {ok, Socket} = case Transport of
+    SockReply = case Transport of
                        ssl ->
                            ssl:connect(Host, Port,
                                        [{mode, binary},
@@ -97,6 +77,13 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                                             {packet, 0}
                                            ], 6000)
                    end,
+    {ok, Socket} = case SockReply of
+      {ok, Sock} -> {ok, Sock};
+      {error, _} = ConnectError ->
+        proc_lib:init_ack(ConnectError),
+        exit(normal)
+    end,
+    proc_lib:init_ack({ok, self()}),
     State = #state{
       protocol = Protocol,
       host = Host,
