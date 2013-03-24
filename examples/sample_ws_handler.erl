@@ -13,12 +13,14 @@
 start_link() ->
     crypto:start(),
     ssl:start(),
-    websocket_client:start_link(?MODULE, wss, "echo.websocket.org", 443, "/", []).
+    websocket_client:start_link("wss://echo.websocket.org", ?MODULE, []).
 
 init([]) ->
     websocket_client:cast(self(), {text, <<"message 1">>}),
     {ok, 2}.
 
+websocket_handle({pong, _}, State) ->
+    {ok, State};
 websocket_handle({text, Msg}, 5) ->
     io:format("Received msg ~p~n", [Msg]),
     {close, <<>>, 10};

@@ -26,7 +26,7 @@ directory. Writing a handler is easy:
         ]).
 
 start_link() ->
-    websocket_client:start_link(?MODULE, ws, "echo.websocket.org", 80, "/", []).
+    websocket_client:start_link("ws://echo.websocket.org:80", ?MODULE, []).
 
 init([]) ->
     self() ! start,
