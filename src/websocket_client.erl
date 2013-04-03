@@ -276,13 +276,13 @@ retrieve_frame(State = #state{
 handle_response(State = #state{socket = Socket, transport = Transport},
                 {reply, Frame, HandlerState}, Buffer) ->
     ok = Transport:send(Socket, encode_frame(Frame)),
-    websocket_loop(State, HandlerState, Buffer);
+    retrieve_frame(State, HandlerState, Buffer);
 handle_response(State = #state{socket = Socket, transport = Transport},
                {close, Payload, HandlerState}, Buffer) ->
     ok = Transport:send(Socket, encode_frame({close, Payload})),
-    websocket_loop(State, HandlerState, Buffer);
+    retrieve_frame(State, HandlerState, Buffer);
 handle_response(State, {ok, HandlerState}, Buffer) ->
-    websocket_loop(State, HandlerState, Buffer).
+    retrieve_frame(State, HandlerState, Buffer).
 
 %% @doc Encodes the data with a header (including a masking key) and
 %% masks the data
