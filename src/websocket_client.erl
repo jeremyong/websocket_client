@@ -25,12 +25,12 @@
           port :: inet:port_number(),
           path ::  string(),
           keepalive :: integer(),
-          socket = undefined :: gen_tcp:socket() | ssl:sslsocket(),
-          transport = undefined :: module(),
+          socket :: inet:socket() | ssl:sslsocket(),
+          transport :: module(),
           handler :: module(),
-          key = undefined :: undefined | binary(),
-          remaining = undefined :: integer(),
-          opcode = undefined :: opcode()
+          key :: binary(),
+          remaining :: undefined | integer(),
+          opcode :: opcode()
          }).
 
 %% @doc Start the websocket client
@@ -93,6 +93,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
       path = Path,
       transport = Transport,
       handler = Handler,
+      key = generate_ws_key(),
       socket = Socket
      },
     ok = websocket_handshake(State),
@@ -114,8 +115,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
 %% @doc Send http upgrade request and validate handshake response challenge
 -spec websocket_handshake(State :: tuple()) ->
     ok.
-websocket_handshake(State = #state{protocol = Protocol, path = Path, host = Host}) ->
-    Key = generate_ws_key(),
+websocket_handshake(State = #state{protocol = Protocol, path = Path, host = Host, key = Key}) ->
     Handshake = [<<"GET ">>, Path,
                  <<" HTTP/1.1"
                    "\r\nHost: ">>, Host,
