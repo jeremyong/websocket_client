@@ -9,6 +9,8 @@
 
 -export([ws_client_init/6]).
 
+-export_type([protocol/0, opcode/0, frame/0]).
+
 -type protocol() :: ws | wss.
 
 -type opcode() :: 0 | 1 | 2 | 8 | 9 | 10.
@@ -19,11 +21,11 @@
 
 -record(state, {
           protocol :: protocol(),
-          host :: binary(),
-          port :: integer(),
-          path ::  binary(),
+          host :: string(),
+          port :: inet:port_number(),
+          path ::  string(),
           keepalive :: integer(),
-          socket = undefined :: inet:socket(),
+          socket = undefined :: gen_tcp:socket() | ssl:sslsocket(),
           transport = undefined :: module(),
           handler :: module(),
           key = undefined :: undefined | binary(),
@@ -32,7 +34,7 @@
          }).
 
 %% @doc Start the websocket client
--spec start_link(URL :: list(), Handler :: module(), Args :: list()) ->
+-spec start_link(URL :: string(), Handler :: module(), Args :: list()) ->
     {ok, pid()} | {error, term()}.
 start_link(URL, Handler, Args) ->
   case http_uri:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]) of
@@ -52,9 +54,9 @@ cast(Client, Frame) ->
 
 %% @doc Create socket, execute handshake, and enter loop
 -spec ws_client_init(Handler :: module(), Protocol :: protocol(),
-                     Host :: list(), Port :: integer(), Path :: list(),
+                     Host :: string(), Port :: inet:port_number(), Path :: string(),
                      Args :: list()) ->
-    pid().
+    no_return().
 ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
     Transport = case Protocol of
                     wss ->
@@ -199,23 +201,25 @@ validate_handshake(HandshakeResponse, Key) ->
                              [{capture, [1], binary}]),
     ok.
 
-%% @doc Mapping from opcode to opcode name and vice versa
--spec websocket_opcode(opcode() | integer()) ->
-    integer() | opcode().
-websocket_opcode(1) -> text;
-websocket_opcode(text) -> 1;
+%% @doc Mapping from opcode to opcode name
+-spec websocket_opcode_to_name(opcode()) ->
+    atom().
+websocket_opcode_to_name(1) -> text;
+websocket_opcode_to_name(2) -> binary;
+websocket_opcode_to_name(8) -> close;
+websocket_opcode_to_name(9) -> ping;
+websocket_opcode_to_name(10) -> pong.
 
-websocket_opcode(2) -> binary;
-websocket_opcode(binary) -> 2;
+%% @doc Mapping from opcode to opcode name
+-spec websocket_name_to_opcode(atom()) ->
+    opcode().
+websocket_name_to_opcode(text) -> 1;
+websocket_name_to_opcode(binary) -> 2;
+websocket_name_to_opcode(close) -> 8;
+websocket_name_to_opcode(ping) -> 9;
+websocket_name_to_opcode(pong) -> 10.
 
-websocket_opcode(8) -> close;
-websocket_opcode(close) -> 8;
 
-websocket_opcode(9) -> ping;
-websocket_opcode(ping) -> 9;
-
-websocket_opcode(10) -> pong;
-websocket_opcode(pong) -> 10.
 
 %% @doc Length is less 126 bytes
 retrieve_frame(State, HandlerState,
@@ -249,14 +253,15 @@ retrieve_frame(State = #state{
                HandlerState, Opcode, Len, Data, Buffer) ->
     << Payload:Len/binary, Rest/bits >> = Data,
     FullPayload = << Buffer/binary, Payload/binary >>,
-    case websocket_opcode(Opcode) of
+    OpcodeName = websocket_opcode_to_name(Opcode),
+    case OpcodeName of
         ping ->
             %% If a ping is received, send a pong  automatically
             ok = Transport:send(Socket, encode_frame({pong, FullPayload}));
         _ ->
             ok
     end,
-    case websocket_opcode(Opcode) of
+    case OpcodeName of
         close when byte_size(FullPayload) >= 2 ->
             << CodeBin:2/binary, ClosePayload/binary >> = FullPayload,
             Code = binary:decode_unsigned(CodeBin),
@@ -266,7 +271,7 @@ retrieve_frame(State = #state{
             Handler:websocket_terminate({close, 0, <<>>}, HandlerState);
         _ ->
             HandlerResponse = Handler:websocket_handle(
-                                {websocket_opcode(Opcode), FullPayload},
+                                {OpcodeName, FullPayload},
                                 HandlerState),
             handle_response(State#state{remaining = undefined},
                             HandlerResponse, Rest)
@@ -289,14 +294,16 @@ handle_response(State, {ok, HandlerState}, Buffer) ->
 -spec encode_frame(frame()) ->
     binary().
 encode_frame({Type, Payload}) ->
-    Opcode = websocket_opcode(Type),
+    Opcode = websocket_name_to_opcode(Type),
     Len = iolist_size(Payload),
     BinLen = payload_length_to_binary(Len),
     MaskingKeyBin = crypto:rand_bytes(4),
     << MaskingKey:32 >> = MaskingKeyBin,
     Header = << 1:1, 0:3, Opcode:4, 1:1, BinLen/bits, MaskingKeyBin/bits >>,
     MaskedPayload = mask_payload(MaskingKey, Payload),
-    << Header/binary, MaskedPayload/binary >>.
+    << Header/binary, MaskedPayload/binary >>;
+encode_frame(Type) when is_atom(Type) ->
+    encode_frame({Type, <<>>}).
 
 %% @doc The payload is masked using a masking key byte by byte.
 %% Can do it in 4 byte chunks to save time until there is left than 4 bytes left
