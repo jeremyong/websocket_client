@@ -114,14 +114,16 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
     ok.
 websocket_handshake(State = #state{protocol = Protocol, path = Path, host = Host}) ->
     Key = generate_ws_key(),
-    Handshake = "GET " ++ Path ++ " HTTP/1.1\r\n" ++
-        "Host: " ++ Host ++ "\r\n" ++
-        "Upgrade: WebSocket\r\n" ++
-        "Connection: Upgrade\r\n" ++
-        "Sec-WebSocket-Key: " ++ Key ++ "\r\n" ++
-        "Origin: " ++ atom_to_list(Protocol) ++ "://" ++ Host ++ "\r\n" ++
-        "Sec-WebSocket-Protocol: \r\n" ++
-        "Sec-WebSocket-Version: 13\r\n\r\n",
+    Handshake = [<<"GET ">>, Path,
+                 <<" HTTP/1.1"
+                   "\r\nHost: ">>, Host,
+                 <<"\r\nUpgrade: WebSocket"
+                   "\r\nConnection: Upgrade"
+                   "\r\nSec-WebSocket-Key: ">>, Key,
+                 <<"\r\nOrigin: ">>, atom_to_binary(Protocol, utf8), <<"://">>, Host,
+                 <<"\r\nSec-WebSocket-Protocol: "
+                   "\r\nSec-WebSocket-Version: 13"
+                   "\r\n\r\n">>],
     Transport = State#state.transport,
     Socket = State#state.socket,
     Transport:send(Socket, Handshake),
@@ -179,18 +181,16 @@ websocket_loop(State = #state{handler = Handler, remaining = Remaining,
 
 %% @doc Key sent in initial handshake
 -spec generate_ws_key() ->
-    list().
+    binary().
 generate_ws_key() ->
-    random:seed(now()),
-    base64:encode_to_string(crypto:rand_bytes(16)).
+    base64:encode(crypto:rand_bytes(16)).
 
 %% @doc Validate handshake response challenge
--spec validate_handshake(HandshakeResponse :: binary(), Key :: list()) ->
+-spec validate_handshake(HandshakeResponse :: binary(), Key :: binary()) ->
     ok.
 validate_handshake(HandshakeResponse, Key) ->
-    BinKey = list_to_binary(Key),
     Challenge = base64:encode(crypto:sha(
-                                << BinKey/binary,
+                                << Key/binary,
                                  "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>
                                )),
     {match, [Challenge]} = re:run(
