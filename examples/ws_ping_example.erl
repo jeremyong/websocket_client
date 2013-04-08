@@ -22,6 +22,11 @@ init([], _ConnState) ->
 
 websocket_handle({pong, _Msg}, _ConnState, State) ->
     io:format("Received pong ~n"),
+
+    %% This is how to access info about the connection/request
+    Proto = websocket_req:protocol(_ConnState),
+    io:format("On protocol: ~p~n", [Proto]),
+
     {ok, State};
 websocket_handle({text, Msg}, _ConnState, 5) ->
     io:format("Received msg ~p~n", [Msg]),
