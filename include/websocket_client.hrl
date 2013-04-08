@@ -20,6 +20,6 @@
           opcode :: opcode()
          }).
 
--type websocket_req() :: #websocket_req{}.
+-opaque websocket_req() :: #websocket_req{}.
 
--export_type([protocol/0, opcode/0, frame/0]).
+-export_type([websocket_req/0, protocol/0, opcode/0, frame/0]).
