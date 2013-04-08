@@ -104,10 +104,10 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
             inet:setopts(Socket, [{active, true}])
     end,
     {ok, HandlerState, KeepAlive} = case Handler:init(Args, ConnState) of
-                                        {ok, ConnState, HS} ->
-                                            {ok, ConnState, HS, 45000};
-                                        {ok, ConnState, HS, KA} ->
-                                            {ok, ConnState, HS, KA}
+                                        {ok, HS} ->
+                                            {ok, HS, 45000};
+                                        {ok, HS, KA} ->
+                                            {ok, HS, KA}
                                     end,
     erlang:send_after(KeepAlive, self(), keepalive),
     websocket_loop(ConnState#state{keepalive = KeepAlive}, HandlerState, <<>>).

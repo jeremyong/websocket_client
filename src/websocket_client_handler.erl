@@ -6,18 +6,18 @@
 
 %% @doc spe
 -callback init(list(), conn_state()) ->
-    {ok, conn_state(), state()}
-        | {ok, conn_state(), state(), keepalive()}.
+    {ok, state()}
+        | {ok, state(), keepalive()}.
 
 -callback websocket_handle({text | binary | ping | pong, binary()}, conn_state(), state()) ->
-    {ok, conn_state(), state()}
-        | {reply, websocket_client:frame(), conn_state(), state()}
-        | {close, binary(), conn_state(), state()}.
+    {ok, state()}
+        | {reply, websocket_client:frame(), state()}
+        | {close, binary(), state()}.
 
 -callback websocket_info(any(), conn_state(), state()) ->
-    {ok, conn_state(), state()}
-        | {reply, websocket_client:frame(), conn_state(), state()}
-        | {close, binary(),  conn_state(), state()}.
+    {ok, state()}
+        | {reply, websocket_client:frame(), state()}
+        | {close, binary(),  state()}.
 
 -callback websocket_terminate({close, integer(), binary()},  conn_state(), state()) ->
     ok.
