@@ -86,7 +86,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
         exit(normal)
     end,
     proc_lib:init_ack({ok, self()}),
-    State = #state{
+    ConnState = #state{
       protocol = Protocol,
       host = Host,
       port = Port,
@@ -96,26 +96,26 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
       key = generate_ws_key(),
       socket = Socket
      },
-    ok = websocket_handshake(State),
+    ok = websocket_handshake(ConnState),
     case Socket of
         {sslsocket, _, _} ->
             ssl:setopts(Socket, [{active, true}]);
         _ ->
             inet:setopts(Socket, [{active, true}])
     end,
-    {ok, HandlerState, KeepAlive} = case Handler:init(Args) of
-                                        {ok, HS} ->
-                                            {ok, HS, 45000};
-                                        {ok, HS, KA} ->
-                                            {ok, HS, KA}
+    {ok, HandlerState, KeepAlive} = case Handler:init(Args, ConnState) of
+                                        {ok, ConnState, HS} ->
+                                            {ok, ConnState, HS, 45000};
+                                        {ok, ConnState, HS, KA} ->
+                                            {ok, ConnState, HS, KA}
                                     end,
     erlang:send_after(KeepAlive, self(), keepalive),
-    websocket_loop(State#state{keepalive = KeepAlive}, HandlerState, <<>>).
+    websocket_loop(ConnState#state{keepalive = KeepAlive}, HandlerState, <<>>).
 
 %% @doc Send http upgrade request and validate handshake response challenge
--spec websocket_handshake(State :: tuple()) ->
+-spec websocket_handshake(ConnState :: tuple()) ->
     ok.
-websocket_handshake(State = #state{protocol = Protocol, path = Path, host = Host, key = Key}) ->
+websocket_handshake(ConnState = #state{protocol = Protocol, path = Path, host = Host, key = Key}) ->
     Handshake = [<<"GET ">>, Path,
                  <<" HTTP/1.1"
                    "\r\nHost: ">>, Host,
@@ -126,8 +126,8 @@ websocket_handshake(State = #state{protocol = Protocol, path = Path, host = Host
                  <<"\r\nSec-WebSocket-Protocol: "
                    "\r\nSec-WebSocket-Version: 13"
                    "\r\n\r\n">>],
-    Transport = State#state.transport,
-    Socket = State#state.socket,
+    Transport = ConnState#state.transport,
+    Socket = ConnState#state.socket,
     Transport:send(Socket, Handshake),
     {ok, HandshakeResponse} = receive_handshake(<<>>, Transport, Socket),
     validate_handshake(HandshakeResponse, Key),
@@ -149,35 +149,35 @@ receive_handshake(Buffer, Transport, Socket) ->
     end.
 
 %% @doc Main loop
--spec websocket_loop(State :: tuple(), HandlerState :: any(),
+-spec websocket_loop(ConnState :: tuple(), HandlerState :: any(),
                      Buffer :: binary()) ->
     ok.
-websocket_loop(State = #state{handler = Handler, remaining = Remaining,
+websocket_loop(ConnState = #state{handler = Handler, remaining = Remaining,
                               socket = Socket, transport = Transport},
                HandlerState, Buffer) ->
     receive
         keepalive ->
             ok = Transport:send(Socket, encode_frame({ping, <<>>})),
-            erlang:send_after(State#state.keepalive, self(), keepalive),
-            websocket_loop(State, HandlerState, Buffer);
+            erlang:send_after(ConnState#state.keepalive, self(), keepalive),
+            websocket_loop(ConnState, HandlerState, Buffer);
         {cast, Frame} ->
             ok = Transport:send(Socket, encode_frame(Frame)),
-            websocket_loop(State, HandlerState, Buffer);
+            websocket_loop(ConnState, HandlerState, Buffer);
         {_Closed, Socket} ->
-            Handler:websocket_terminate({close, 0, <<>>}, HandlerState);
+            Handler:websocket_terminate({close, 0, <<>>}, ConnState, HandlerState);
         {_TransportType, Socket, Data} ->
             case Remaining of
                 undefined ->
-                    retrieve_frame(State, HandlerState,
+                    retrieve_frame(ConnState, HandlerState,
                                    << Buffer/binary, Data/binary >>);
                 _ ->
-                    retrieve_frame(State, HandlerState,
-                                   State#state.opcode, Remaining, Data, Buffer)
+                    retrieve_frame(ConnState, HandlerState,
+                                   ConnState#state.opcode, Remaining, Data, Buffer)
             end;
         Msg ->
-            Handler = State#state.handler,
-            HandlerResponse = Handler:websocket_info(Msg, HandlerState),
-            handle_response(State, HandlerResponse, Buffer)
+            Handler = ConnState#state.handler,
+            HandlerResponse = Handler:websocket_info(Msg, ConnState, HandlerState),
+            handle_response(ConnState, HandlerResponse, Buffer)
     end,
     ok.
 
@@ -247,7 +247,7 @@ retrieve_frame(State, HandlerState, Opcode, Len, Data, Buffer)
     websocket_loop(State#state{remaining = Remaining, opcode = Opcode},
                    HandlerState, << Buffer/bits, Data/bits >>);
 %% @doc Length known and remaining data is appended to the buffer
-retrieve_frame(State = #state{
+retrieve_frame(ConnState = #state{
                  handler = Handler, transport = Transport, socket = Socket
                 },
                HandlerState, Opcode, Len, Data, Buffer) ->
@@ -266,28 +266,29 @@ retrieve_frame(State = #state{
             << CodeBin:2/binary, ClosePayload/binary >> = FullPayload,
             Code = binary:decode_unsigned(CodeBin),
             Handler:websocket_terminate({close, Code, ClosePayload},
-                                        HandlerState);
+                                        ConnState, HandlerState);
         close ->
-            Handler:websocket_terminate({close, 0, <<>>}, HandlerState);
+            Handler:websocket_terminate({close, 0, <<>>}, 
+                                        ConnState, HandlerState);
         _ ->
             HandlerResponse = Handler:websocket_handle(
                                 {OpcodeName, FullPayload},
-                                HandlerState),
-            handle_response(State#state{remaining = undefined},
+                                ConnState, HandlerState),
+            handle_response(ConnState#state{remaining = undefined},
                             HandlerResponse, Rest)
     end.
 
 %% @doc Handles return values from the callback module
-handle_response(State = #state{socket = Socket, transport = Transport},
+handle_response(ConnState = #state{socket = Socket, transport = Transport},
                 {reply, Frame, HandlerState}, Buffer) ->
     ok = Transport:send(Socket, encode_frame(Frame)),
-    websocket_loop(State, HandlerState, Buffer);
-handle_response(State = #state{socket = Socket, transport = Transport},
+    websocket_loop(ConnState, HandlerState, Buffer);
+handle_response(ConnState = #state{socket = Socket, transport = Transport},
                {close, Payload, HandlerState}, Buffer) ->
     ok = Transport:send(Socket, encode_frame({close, Payload})),
-    websocket_loop(State, HandlerState, Buffer);
-handle_response(State, {ok, HandlerState}, Buffer) ->
-    websocket_loop(State, HandlerState, Buffer).
+    websocket_loop(ConnState, HandlerState, Buffer);
+handle_response(ConnState, {ok, HandlerState}, Buffer) ->
+    websocket_loop(ConnState, HandlerState, Buffer).
 
 %% @doc Encodes the data with a header (including a masking key) and
 %% masks the data
