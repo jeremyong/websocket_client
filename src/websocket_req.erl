@@ -11,20 +11,20 @@
           host      :: string(),
           port      :: inet:port_number(),
           path      :: string(),
-          keepalive :: integer(),
+          keepalive :: inifinity | integer(),
           socket    :: inet:socket() | ssl:sslsocket(),
           transport :: module(),
           handler   :: module(),
           key       :: binary(),
           remaining :: undefined | integer(),
-          opcode    :: opcode()
+          opcode    :: undefined | opcode()
          }).
 
 -opaque req() :: #websocket_req{}.
 -export_type([req/0]).
 
 
--export([new/1,
+-export([new/11,
          protocol/2,   protocol/1,
          host/2,       host/1,
          port/2,       port/1,
@@ -38,22 +38,47 @@
          opcode/2,     opcode/1
         ]).
 
--spec new([tuple()]) -> req().
-new(Args) ->
-    new(Args, #websocket_req{}).
+-export([
+    opcode_to_name/1,
+    name_to_opcode/1
+    ]).
 
-new([], Req) -> Req;
-new([{protocol , Val} | Props], Req) -> new(Props, Req#websocket_req{protocol   = Val}); 
-new([{host     , Val} | Props], Req) -> new(Props, Req#websocket_req{host       = Val}); 
-new([{port     , Val} | Props], Req) -> new(Props, Req#websocket_req{port       = Val}); 
-new([{path     , Val} | Props], Req) -> new(Props, Req#websocket_req{path       = Val}); 
-new([{keepalive, Val} | Props], Req) -> new(Props, Req#websocket_req{keepalive  = Val}); 
-new([{socket   , Val} | Props], Req) -> new(Props, Req#websocket_req{socket     = Val}); 
-new([{transport, Val} | Props], Req) -> new(Props, Req#websocket_req{transport  = Val}); 
-new([{handler  , Val} | Props], Req) -> new(Props, Req#websocket_req{handler    = Val}); 
-new([{key      , Val} | Props], Req) -> new(Props, Req#websocket_req{key        = Val}); 
-new([{remaining, Val} | Props], Req) -> new(Props, Req#websocket_req{remaining  = Val}); 
-new([{opcode   , Val} | Props], Req) -> new(Props, Req#websocket_req{opcode     = Val}).
+-spec new(protocol(), string(), inet:port_number(), string(), integer(), inet:socket() | ssl:sslsocket(), module(), module(), binary(), undefined | integer(), opcode()) -> req().
+new(Protocol, Host, Port,
+    Path, Keepalive, Socket,
+    Transport, Handler, Key, Remaining, Opcode) ->
+    #websocket_req{
+        protocol  = Protocol,
+        host      = Host,
+        port      = Port,
+        path      = Path,
+        keepalive = Keepalive,
+        socket    = Socket,
+        transport = Transport,
+        handler   = Handler,
+        key       = Key,
+        remaining = Remaining,
+        opcode    = Opcode   
+    }.
+
+
+%% @doc Mapping from opcode to opcode name
+-spec opcode_to_name(opcode()) ->
+    atom().
+opcode_to_name(1) -> text;
+opcode_to_name(2) -> binary;
+opcode_to_name(8) -> close;
+opcode_to_name(9) -> ping;
+opcode_to_name(10) -> pong.
+
+%% @doc Mapping from opcode to opcode name
+-spec name_to_opcode(atom()) ->
+    opcode().
+name_to_opcode(text) -> 1;
+name_to_opcode(binary) -> 2;
+name_to_opcode(close) -> 8;
+name_to_opcode(ping) -> 9;
+name_to_opcode(pong) -> 10.
 
 
 -spec protocol(req()) -> protocol().

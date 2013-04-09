@@ -64,16 +64,19 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
         exit(normal)
     end,
     proc_lib:init_ack({ok, self()}),
-    WSReq = websocket_req:new([
-      {protocol, Protocol},
-      {host, Host},
-      {port, Port},
-      {path, Path},
-      {transport, Transport},
-      {handler, Handler},
-      {key, generate_ws_key()},
-      {socket, Socket}
-    ]),
+    WSReq = websocket_req:new(
+      Protocol,
+      Host,
+      Port,
+      Path,
+      infinity, %% Keepalive
+      Socket,
+      Transport,
+      Handler,
+      generate_ws_key(),
+      undefined, %% Remaining
+      undefined  %% Opcode
+    ),
     ok = websocket_handshake(WSReq),
     case Socket of
         {sslsocket, _, _} ->
@@ -187,25 +190,6 @@ validate_handshake(HandshakeResponse, Key) ->
                              [{capture, [1], binary}]),
     ok.
 
-%% @doc Mapping from opcode to opcode name
--spec websocket_opcode_to_name(opcode()) ->
-    atom().
-websocket_opcode_to_name(1) -> text;
-websocket_opcode_to_name(2) -> binary;
-websocket_opcode_to_name(8) -> close;
-websocket_opcode_to_name(9) -> ping;
-websocket_opcode_to_name(10) -> pong.
-
-%% @doc Mapping from opcode to opcode name
--spec websocket_name_to_opcode(atom()) ->
-    opcode().
-websocket_name_to_opcode(text) -> 1;
-websocket_name_to_opcode(binary) -> 2;
-websocket_name_to_opcode(close) -> 8;
-websocket_name_to_opcode(ping) -> 9;
-websocket_name_to_opcode(pong) -> 10.
-
-
 
 %% @doc Length is less 126 bytes
 retrieve_frame(WSReq, HandlerWSReq,
@@ -243,7 +227,7 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
 
     << Payload:Len/binary, Rest/bits >> = Data,
     FullPayload = << Buffer/binary, Payload/binary >>,
-    OpcodeName = websocket_opcode_to_name(Opcode),
+    OpcodeName = websocket_req:opcode_to_name(Opcode),
     case OpcodeName of
         ping ->
             %% If a ping is received, send a pong  automatically
@@ -292,7 +276,7 @@ handle_response(WSReq, {ok, HandlerState}, Buffer) ->
 -spec encode_frame(frame()) ->
     binary().
 encode_frame({Type, Payload}) ->
-    Opcode = websocket_name_to_opcode(Type),
+    Opcode = websocket_req:name_to_opcode(Type),
     Len = iolist_size(Payload),
     BinLen = payload_length_to_binary(Len),
     MaskingKeyBin = crypto:rand_bytes(4),
