@@ -1,7 +1,4 @@
-%% -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-%% Accessor module for the #websocket_req{} record.
-%%
-%% -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+%% @doc Accessor module for the #websocket_req{} record.
 -module(websocket_req).
 
 -record(websocket_req, {

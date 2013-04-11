@@ -1,10 +1,9 @@
 -module(websocket_client_handler).
 
--type state() :: any().        %% Implementation state - controlled by implementation.
+-type state() :: any().
 -type keepalive() :: integer().
 -type close_type() :: normal | error | remote.
 
-%% @doc spe
 -callback init(list(), websocket_req:req()) ->
     {ok, state()}
         | {ok, state(), keepalive()}.
