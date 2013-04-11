@@ -151,7 +151,7 @@ websocket_loop(WSReq, HandlerState, Buffer) ->
             ok = Transport:send(Socket, encode_frame(Frame)),
             websocket_loop(WSReq, HandlerState, Buffer);
         {_Closed, Socket} ->
-            websocket_close(WSReq, HandlerState);
+            websocket_close(WSReq, HandlerState, {remote, closed});
         {_TransportType, Socket, Data} ->
             case Remaining of
                 undefined ->
@@ -168,15 +168,12 @@ websocket_loop(WSReq, HandlerState, Buffer) ->
     end,
     ok.
 
--spec websocket_close(WSReq :: websocket_req:req(), HandlerState :: any()) -> ok.
-websocket_close(WSReq, HandlerState) ->
-    websocket_close(WSReq, HandlerState, 0, <<>>).
-
--spec websocket_close(WSReq :: websocket_req:req(), HandlerState :: any(),
-                      CloseCode :: 1000..4999, ClosePayload :: binary()) -> ok.
-websocket_close(WSReq, HandlerState, CloseCode, ClosePayload) ->
+-spec websocket_close(WSReq :: websocket_req:req(),
+                      HandlerState :: any(),
+                      Reason :: tuple()) -> ok.
+websocket_close(WSReq, HandlerState, Reason) ->
     Handler = websocket_req:handler(WSReq),
-    Handler:websocket_terminate({close, CloseCode, ClosePayload}, WSReq, HandlerState).
+    Handler:websocket_terminate(Reason, WSReq, HandlerState).
 
 %% @doc Key sent in initial handshake
 -spec generate_ws_key() ->
@@ -243,9 +240,16 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
         close when byte_size(FullPayload) >= 2 ->
             << CodeBin:2/binary, ClosePayload/binary >> = FullPayload,
             Code = binary:decode_unsigned(CodeBin),
-            websocket_close(WSReq, HandlerState, Code, ClosePayload);
+            Reason = case Code of
+                         1000 -> {normal, ClosePayload};
+                         1002 -> {error, badframe, ClosePayload};
+                         1007 -> {error, badencoding, ClosePayload};
+                         1011 -> {error, handler, ClosePayload};
+                         _ -> {remote, Code, ClosePayload}
+                     end,
+            websocket_close(WSReq, HandlerState, Reason);
         close ->
-            websocket_close(WSReq, HandlerState);
+            websocket_close(WSReq, HandlerState, {remote, <<>>});
         _ ->
             HandlerResponse = Handler:websocket_handle(
                                 {OpcodeName, FullPayload},
@@ -266,7 +270,7 @@ handle_response(WSReq, {close, Payload, HandlerState}, _) ->
     Socket = websocket_req:socket(WSReq),
     Transport = websocket_req:transport(WSReq),
     ok = Transport:send(Socket, encode_frame({close, Payload})),
-    websocket_close(WSReq, HandlerState).
+    websocket_close(WSReq, HandlerState, {normal, Payload}).
 
 %% @doc Encodes the data with a header (including a masking key) and
 %% masks the data

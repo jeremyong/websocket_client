@@ -2,6 +2,7 @@
 
 -type state() :: any().        %% Implementation state - controlled by implementation.
 -type keepalive() :: integer().
+-type close_type() :: normal | error | remote.
 
 %% @doc spe
 -callback init(list(), websocket_req:req()) ->
@@ -18,5 +19,6 @@
         | {reply, websocket_client:frame(), state()}
         | {close, binary(),  state()}.
 
--callback websocket_terminate({close, integer(), binary()},  websocket_req:req(), state()) ->
+-callback websocket_terminate({close_type(), binary()} | {close_type(), integer(), binary()},
+                              websocket_req:req(), state()) ->
     ok.

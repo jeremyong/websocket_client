@@ -42,7 +42,7 @@ websocket_handle({text, Msg}, _ConnState, State) ->
 websocket_info(start, _ConnState, State) ->
     {reply, {text, <<"erlang message received">>}, State}.
 
-websocket_terminate({close, Code, Payload}, _ConnState, State) ->
-    io:format("Websocket closed in state ~p wih code ~p and payload ~p~n",
-              [State, Code, Payload]),
+websocket_terminate(Reason, _ConnState, State) ->
+    io:format("Websocket closed in state ~p wih reason ~p~n",
+              [State, Reason]),
     ok.
