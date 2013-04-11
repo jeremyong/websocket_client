@@ -185,53 +185,78 @@ generate_ws_key() ->
 -spec validate_handshake(HandshakeResponse :: binary(), Key :: binary()) ->
     ok.
 validate_handshake(HandshakeResponse, Key) ->
-    Challenge = base64:encode(crypto:sha(
-                                << Key/binary,
-                                 "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>
-                               )),
+    Challenge = base64:encode(
+                  crypto:sha(<< Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>)),
     {match, [Challenge]} = re:run(
                              HandshakeResponse,
                              ".*[s|S]ec-[w|W]eb[s|S]ocket-[a|A]ccept: (.*)\\r\\n.*",
                              [{capture, [1], binary}]),
     ok.
 
+%% @doc Start or continue continuation payload with length less than 126 bytes
+retrieve_frame(WSReq, HandlerWSReq,
+               << 0:4, Opcode:4, 0:1, Len:7, Rest/bits >>)
+  when Len < 126 ->
+    WSReq1 = set_continuation_if_empty(WSReq, Opcode),
+    WSReq2 = websocket_req:fin(0, WSReq1),
+    retrieve_frame(WSReq2, HandlerWSReq, Opcode, Len, Rest, <<>>);
+%% @doc Start or continue continuation payload with length a 2 byte int
+retrieve_frame(WSReq, HandlerWSReq,
+               << 0:4, Opcode:4, 0:1, 126:7, Len:16, Rest/bits >>)
+  when Len > 125, Opcode < 8 ->
+    WSReq1 = set_continuation_if_empty(WSReq, Opcode),
+    WSReq2 = websocket_req:fin(0, WSReq1),
+    retrieve_frame(WSReq2, HandlerWSReq, Opcode, Len, Rest, <<>>);
+%% @doc Start or continue continuation payload with length a 64 bit int
+retrieve_frame(WSReq, HandlerWSReq,
+               << 0:4, Opcode:4, 0:1, 127:7, 0:1, Len:63, Rest/bits >>)
+  when Len > 16#ffff, Opcode < 8 ->
+    WSReq1 = set_continuation_if_empty(WSReq, Opcode),
+    WSReq2 = websocket_req:fin(0, WSReq1),
+    retrieve_frame(WSReq2, HandlerWSReq, Opcode, Len, Rest, <<>>);
 %% @doc Length is less 126 bytes
 retrieve_frame(WSReq, HandlerWSReq,
                << 1:1, 0:3, Opcode:4, 0:1, Len:7, Rest/bits >>)
   when Len < 126 ->
-    retrieve_frame(WSReq, HandlerWSReq, Opcode, Len, Rest, <<>>);
+    WSReq1 = websocket_req:fin(1, WSReq),
+    retrieve_frame(WSReq1, HandlerWSReq, Opcode, Len, Rest, <<>>);
 %% @doc Length is a 2 byte integer
 retrieve_frame(WSReq, HandlerWSReq,
                << 1:1, 0:3, Opcode:4, 0:1, 126:7, Len:16, Rest/bits >>)
   when Len > 125, Opcode < 8 ->
-    retrieve_frame(WSReq, HandlerWSReq, Opcode, Len, Rest, <<>>);
+    WSReq1 = websocket_req:fin(1, WSReq),
+    retrieve_frame(WSReq1, HandlerWSReq, Opcode, Len, Rest, <<>>);
 %% @doc Length is a 64 bit integer
 retrieve_frame(WSReq, HandlerWSReq,
                << 1:1, 0:3, Opcode:4, 0:1, 127:7, 0:1, Len:63, Rest/bits >>)
   when Len > 16#ffff, Opcode < 8 ->
-    retrieve_frame(WSReq, HandlerWSReq, Opcode, Len, Rest, <<>>);
+    WSReq1 = websocket_req:fin(1, WSReq),
+    retrieve_frame(WSReq1, HandlerWSReq, Opcode, Len, Rest, <<>>);
 %% @doc Need more data to read length properly
 retrieve_frame(WSReq, HandlerWSReq, Data) ->
     websocket_loop(WSReq, HandlerWSReq, Data).
 
 %% @doc Length known and still missing data
-retrieve_frame(WSReq0, HandlerWSReq, Opcode, Len, Data, Buffer)
+retrieve_frame(WSReq, HandlerWSReq, Opcode, Len, Data, Buffer)
   when byte_size(Data) < Len ->
     Remaining = Len - byte_size(Data),
-    WSReq1 = websocket_req:remaining(Remaining, WSReq0),
-    WSReq  = websocket_req:opcode(Opcode, WSReq1),
-    websocket_loop(WSReq, HandlerWSReq, << Buffer/bits, Data/bits >>);
+    WSReq1 = websocket_req:remaining(Remaining, WSReq),
+    WSReq2  = websocket_req:opcode(Opcode, WSReq1),
+    websocket_loop(WSReq2, HandlerWSReq, << Buffer/bits, Data/bits >>);
 %% @doc Length known and remaining data is appended to the buffer
 retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
     Handler = websocket_req:handler(WSReq),
-    Transport = websocket_req:transport(WSReq),
-    Socket = websocket_req:socket(WSReq),
+    Continuation = websocket_req:continuation(WSReq),
+    ContinuationOpcode = websocket_req:continuation_opcode(WSReq),
+    Fin = websocket_req:fin(WSReq),
     << Payload:Len/binary, Rest/bits >> = Data,
     FullPayload = << Buffer/binary, Payload/binary >>,
     OpcodeName = websocket_req:opcode_to_name(Opcode),
     case OpcodeName of
         ping ->
             %% If a ping is received, send a pong automatically
+            Transport = websocket_req:transport(WSReq),
+            Socket = websocket_req:socket(WSReq),
             ok = Transport:send(Socket, encode_frame({pong, FullPayload}));
         _ ->
             ok
@@ -250,6 +275,23 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
             websocket_close(WSReq, HandlerState, Reason);
         close ->
             websocket_close(WSReq, HandlerState, {remote, <<>>});
+        %% Non-control continuation frame
+        _ when Opcode < 8, Continuation =/= undefined, Fin == 0 ->
+            %% Append to previously existing continuation payloads and continue
+            Continuation1 = << Continuation/binary, FullPayload/binary >>,
+            WSReq1 = websocket_req:continuation(Continuation1, WSReq),
+            retrieve_frame(WSReq1, HandlerState, Rest);
+        %% Terminate continuation frame sequence with non-control frame
+        _ when Opcode < 8, Continuation =/= undefined, Fin == 1 ->
+            DefragPayload = << Continuation/binary, FullPayload/binary >>,
+            WSReq1 = websocket_req:continuation(undefined, WSReq),
+            WSReq2 = websocket_req:continuation_opcode(undefined, WSReq1),
+            ContinuationOpcodeName = websocket_req:opcode_to_name(ContinuationOpcode),
+            HandlerResponse = Handler:websocket_handle(
+                                {ContinuationOpcodeName, DefragPayload},
+                                WSReq2, HandlerState),
+            handle_response(websocket_req:remaining(undefined, WSReq1),
+                            HandlerResponse, Rest);
         _ ->
             HandlerResponse = Handler:websocket_handle(
                                 {OpcodeName, FullPayload},
@@ -318,3 +360,17 @@ payload_length_to_binary(Len) when Len =< 16#ffff ->
     << 126:7, Len:16 >>;
 payload_length_to_binary(Len) when Len =< 16#7fffffffffffffff ->
     << 127:7, Len:64 >>.
+
+%% @doc If this is the first continuation frame, set the opcode and initialize
+%% continuation to an empty binary. Otherwise, return the request object untouched.
+-spec set_continuation_if_empty(WSReq :: websocket_req:req(),
+                                Opcode :: websocket_req:opcode()) ->
+    websocket_req:req().
+set_continuation_if_empty(WSReq, Opcode) ->
+    case websocket_req:continuation(WSReq) of
+        undefined ->
+            WSReq1 = websocket_req:continuation_opcode(Opcode, WSReq),
+            websocket_req:continuation(<<>>, WSReq1);
+        _ ->
+            WSReq
+    end.

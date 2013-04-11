@@ -15,8 +15,10 @@
           handler :: module(),
           key :: binary(),
           remaining = undefined :: undefined | integer(),
+          fin = undefined :: undefined | fin(),
           opcode = undefined :: undefined | opcode(),
-          continuation = undefined :: undefined | binary()
+          continuation = undefined :: undefined | binary(),
+          continuation_opcode = undefined :: undefined | opcode()
          }).
 
 -opaque req() :: #websocket_req{}.
@@ -31,6 +33,9 @@
 -type opcode() :: 0 | 1 | 2 | 8 | 9 | 10.
 -export_type([protocol/0, opcode/0, frame/0]).
 
+-type fin() :: 0 | 1.
+-export_type([fin/0]).
+
 -export([new/8,
          protocol/2, protocol/1,
          host/2, host/1,
@@ -42,8 +47,10 @@
          handler/2, handler/1,
          key/2, key/1,
          remaining/2, remaining/1,
+         fin/2, fin/1,
          opcode/2, opcode/1,
-         continuation/2, continuation/1
+         continuation/2, continuation/1,
+         continuation_opcode/2, continuation_opcode/1
         ]).
 
 -export([
@@ -70,6 +77,7 @@ new(Protocol, Host, Port, Path, Socket, Transport, Handler, Key) ->
 %% @doc Mapping from opcode to opcode name
 -spec opcode_to_name(opcode()) ->
     atom().
+opcode_to_name(0) -> continuation;
 opcode_to_name(1) -> text;
 opcode_to_name(2) -> binary;
 opcode_to_name(8) -> close;
@@ -79,6 +87,7 @@ opcode_to_name(10) -> pong.
 %% @doc Mapping from opcode to opcode name
 -spec name_to_opcode(atom()) ->
     opcode().
+name_to_opcode(continuation) -> 0;
 name_to_opcode(text) -> 1;
 name_to_opcode(binary) -> 2;
 name_to_opcode(close) -> 8;
@@ -165,11 +174,17 @@ remaining(#websocket_req{remaining = R}) -> R.
 remaining(R, Req) ->
     Req#websocket_req{remaining = R}.
 
+-spec fin(req()) -> fin().
+fin(#websocket_req{fin = F}) -> F.
 
--spec opcode(req()) -> websocket_client:opcode().
+-spec fin(fin(), req()) -> req().
+fin(F, Req) ->
+    Req#websocket_req{fin = F}.
+
+-spec opcode(req()) -> opcode().
 opcode(#websocket_req{opcode = O}) -> O.
 
--spec opcode(websocket_client:opcode(), req()) -> req().
+-spec opcode(opcode(), req()) -> req().
 opcode(O, Req) ->
     Req#websocket_req{opcode = O}.
 
@@ -179,3 +194,10 @@ continuation(#websocket_req{continuation = C}) -> C.
 -spec continuation(undefined | binary(), req()) -> req().
 continuation(C, Req) ->
     Req#websocket_req{continuation = C}.
+
+-spec continuation_opcode(req()) -> opcode().
+continuation_opcode(#websocket_req{continuation_opcode = C}) -> C.
+
+-spec continuation_opcode(opcode(), req()) -> req().
+continuation_opcode(C, Req) ->
+    Req#websocket_req{continuation_opcode = C}.
