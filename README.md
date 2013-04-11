@@ -7,6 +7,7 @@
 3. Handshake validation
 4. tcp and ssl support
 5. Handling of text, binary, ping, pong, and close frames
+6. Handling of continuation frames
 
 ## Usage
 
@@ -82,13 +83,10 @@ contiguous text or binary websocket frames.
 The client as is is still missing a lot of functionality. We still
 need to:
 
-1. Handle continuation frames and fragmented messages
-2. Close the connection in a number of error cases (malformed headers,
+1. Close the connection in a number of error cases (malformed headers,
 etc).
-3. Add tests!! (hint hint)
-4. Stop using `verify_none` by default
-5. Provide additional arities of the `start_link` function to supply
-a default port, path, protocol, or all the above
+2. Add tests!! (hint hint)
+3. Stop using `verify_none` by default
 
 This is being released without the above functionality in case it is
 useful as is for benchmarking or debugging as mentioned above (this is
