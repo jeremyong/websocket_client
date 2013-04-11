@@ -67,13 +67,10 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
       Host,
       Port,
       Path,
-      infinity, %% Keepalive
       Socket,
       Transport,
       Handler,
-      generate_ws_key(),
-      undefined, %% Remaining
-      undefined  %% Opcode
+      generate_ws_key()
     ),
     ok = websocket_handshake(WSReq),
     case Socket of
@@ -84,11 +81,16 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
     end,
     {ok, HandlerState, KeepAlive} = case Handler:init(Args, WSReq) of
                                         {ok, HS} ->
-                                            {ok, HS, 45000};
+                                            {ok, HS, infinity};
                                         {ok, HS, KA} ->
                                             {ok, HS, KA}
                                     end,
-    erlang:send_after(KeepAlive, self(), keepalive),
+    case KeepAlive of
+        infinity ->
+            ok;
+        _ ->
+            erlang:send_after(KeepAlive, self(), keepalive)
+    end,
     websocket_loop(websocket_req:keepalive(KeepAlive, WSReq), HandlerState, <<>>).
 
 %% @doc Send http upgrade request and validate handshake response challenge
@@ -188,7 +190,6 @@ validate_handshake(HandshakeResponse, Key) ->
                              [{capture, [1], binary}]),
     ok.
 
-
 %% @doc Length is less 126 bytes
 retrieve_frame(WSReq, HandlerWSReq,
                << 1:1, 0:3, Opcode:4, 0:1, Len:7, Rest/bits >>)
@@ -219,9 +220,9 @@ retrieve_frame(WSReq0, HandlerWSReq, Opcode, Len, Data, Buffer)
 %% @doc Length known and remaining data is appended to the buffer
 retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
 
- Handler = websocket_req:handler(WSReq),
- Transport = websocket_req:transport(WSReq),
- Socket = websocket_req:socket(WSReq),
+    Handler = websocket_req:handler(WSReq),
+    Transport = websocket_req:transport(WSReq),
+    Socket = websocket_req:socket(WSReq),
 
     << Payload:Len/binary, Rest/bits >> = Data,
     FullPayload = << Buffer/binary, Payload/binary >>,

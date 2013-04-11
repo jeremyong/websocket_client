@@ -23,7 +23,7 @@ websocket_handle({pong, _}, _ConnState, State) ->
     {ok, State};
 websocket_handle({text, Msg}, _ConnState, 5) ->
     io:format("Received msg ~p~n", [Msg]),
-    {close, <<>>, 10};
+    {close, <<>>, "done"};
 websocket_handle({text, Msg}, _ConnState, State) ->
     io:format("Received msg ~p~n", [Msg]),
     timer:sleep(1000),
