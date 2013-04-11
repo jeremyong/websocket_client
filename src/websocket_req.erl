@@ -196,10 +196,10 @@ continuation(#websocket_req{continuation = C}) -> C.
 continuation(C, Req) ->
     Req#websocket_req{continuation = C}.
 
--spec continuation_opcode(req()) -> opcode().
+-spec continuation_opcode(req()) -> undefined | opcode().
 continuation_opcode(#websocket_req{continuation_opcode = C}) -> C.
 
--spec continuation_opcode(opcode(), req()) -> req().
+-spec continuation_opcode(undefined | opcode(), req()) -> req().
 continuation_opcode(C, Req) ->
     Req#websocket_req{continuation_opcode = C}.
 
