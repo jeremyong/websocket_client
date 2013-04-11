@@ -50,7 +50,8 @@
          fin/2, fin/1,
          opcode/2, opcode/1,
          continuation/2, continuation/1,
-         continuation_opcode/2, continuation_opcode/1
+         continuation_opcode/2, continuation_opcode/1,
+         get/2, set/2
         ]).
 
 -export([
@@ -195,9 +196,49 @@ continuation(#websocket_req{continuation = C}) -> C.
 continuation(C, Req) ->
     Req#websocket_req{continuation = C}.
 
--spec continuation_opcode(req()) -> opcode().
+-spec continuation_opcode(req()) -> undefined | opcode().
 continuation_opcode(#websocket_req{continuation_opcode = C}) -> C.
 
--spec continuation_opcode(opcode(), req()) -> req().
+-spec continuation_opcode(undefined | opcode(), req()) -> req().
 continuation_opcode(C, Req) ->
     Req#websocket_req{continuation_opcode = C}.
+
+
+-spec get(atom(), req()) -> any(); ([atom()], req()) -> [any()].
+get(List, Req) when is_list(List) ->
+    [g(Atom, Req) || Atom <- List];
+get(Atom, Req) when is_atom(Atom) ->
+    g(Atom, Req).
+
+g(protocol, #websocket_req{protocol = Ret}) -> Ret;
+g(host, #websocket_req{host = Ret}) -> Ret;
+g(port, #websocket_req{port = Ret}) -> Ret;
+g(path, #websocket_req{path = Ret}) -> Ret;
+g(keepalive, #websocket_req{keepalive = Ret}) -> Ret;
+g(socket, #websocket_req{socket = Ret}) -> Ret;
+g(transport, #websocket_req{transport = Ret}) -> Ret;
+g(handler, #websocket_req{handler = Ret}) -> Ret;
+g(key, #websocket_req{key = Ret}) -> Ret;
+g(remaining, #websocket_req{remaining = Ret}) -> Ret;
+g(fin, #websocket_req{fin = Ret}) -> Ret;
+g(opcode, #websocket_req{opcode = Ret}) -> Ret;
+g(continuation, #websocket_req{continuation = Ret}) -> Ret;
+g(continuation_opcode, #websocket_req{continuation_opcode = Ret}) -> Ret.
+
+
+-spec set([{atom(), any()}], Req) -> Req when Req::req().
+set([{protocol, Val} | Tail], Req) -> set(Tail, Req#websocket_req{protocol = Val});
+set([{host, Val} | Tail], Req) -> set(Tail, Req#websocket_req{host = Val});
+set([{port, Val} | Tail], Req) -> set(Tail, Req#websocket_req{port = Val});
+set([{path, Val} | Tail], Req) -> set(Tail, Req#websocket_req{path = Val});
+set([{keepalive, Val} | Tail], Req) -> set(Tail, Req#websocket_req{keepalive = Val});
+set([{socket, Val} | Tail], Req) -> set(Tail, Req#websocket_req{socket = Val});
+set([{transport, Val} | Tail], Req) -> set(Tail, Req#websocket_req{transport = Val});
+set([{handler, Val} | Tail], Req) -> set(Tail, Req#websocket_req{handler = Val});
+set([{key, Val} | Tail], Req) -> set(Tail, Req#websocket_req{key = Val});
+set([{remaining, Val} | Tail], Req) -> set(Tail, Req#websocket_req{remaining = Val});
+set([{fin, Val} | Tail], Req) -> set(Tail, Req#websocket_req{fin = Val});
+set([{opcode, Val} | Tail], Req) -> set(Tail, Req#websocket_req{opcode = Val});
+set([{continuation, Val} | Tail], Req) -> set(Tail, Req#websocket_req{continuation = Val});
+set([{continuation_opcode, Val} | Tail], Req) -> set(Tail, Req#websocket_req{continuation_opcode = Val});
+set([], Req) -> Req.

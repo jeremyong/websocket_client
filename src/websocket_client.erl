@@ -97,10 +97,8 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
 -spec websocket_handshake(WSReq :: websocket_req:req()) ->
     ok.
 websocket_handshake(WSReq) ->
-    Protocol = websocket_req:protocol(WSReq),
-    Path = websocket_req:path(WSReq),
-    Host = websocket_req:host(WSReq),
-    Key  = websocket_req:key(WSReq),
+    [Protocol, Path, Host, Key, Transport, Socket] =
+        websocket_req:get([protocol, path, host, key, transport, socket], WSReq),
     Handshake = [<<"GET ">>, Path,
                  <<" HTTP/1.1"
                    "\r\nHost: ">>, Host,
@@ -138,10 +136,8 @@ receive_handshake(Buffer, Transport, Socket) ->
                      Buffer :: binary()) ->
     ok.
 websocket_loop(WSReq, HandlerState, Buffer) ->
-    Handler = websocket_req:handler(WSReq),
-    Remaining = websocket_req:remaining(WSReq),
-    Socket = websocket_req:socket(WSReq),
-    Transport = websocket_req:transport(WSReq),
+    [Handler, Remaining, Socket, Transport] =
+        websocket_req:get([handler, remaining, socket, transport], WSReq),
     receive
         keepalive ->
             ok = Transport:send(Socket, encode_frame({ping, <<>>})),
@@ -245,9 +241,8 @@ retrieve_frame(WSReq, HandlerWSReq, Opcode, Len, Data, Buffer)
     websocket_loop(WSReq2, HandlerWSReq, << Buffer/bits, Data/bits >>);
 %% @doc Length known and remaining data is appended to the buffer
 retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
-    Handler = websocket_req:handler(WSReq),
-    Continuation = websocket_req:continuation(WSReq),
-    ContinuationOpcode = websocket_req:continuation_opcode(WSReq),
+    [Handler, Continuation, ContinuationOpcode] =
+        websocket_req:get([handler, continuation, continuation_opcode], WSReq),
     Fin = websocket_req:fin(WSReq),
     << Payload:Len/binary, Rest/bits >> = Data,
     FullPayload = << Buffer/binary, Payload/binary >>,
@@ -255,8 +250,7 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
     case OpcodeName of
         ping ->
             %% If a ping is received, send a pong automatically
-            Transport = websocket_req:transport(WSReq),
-            Socket = websocket_req:socket(WSReq),
+            [Transport, Socket] = websocket_req:get([transport, socket], WSReq),
             ok = Transport:send(Socket, encode_frame({pong, FullPayload}));
         _ ->
             ok
@@ -302,15 +296,13 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
 
 %% @doc Handles return values from the callback module
 handle_response(WSReq, {reply, Frame, HandlerState}, Buffer) ->
-    Socket = websocket_req:socket(WSReq),
-    Transport = websocket_req:transport(WSReq),
+    [Socket, Transport] = websocket_req:get([socket, transport], WSReq),
     ok = Transport:send(Socket, encode_frame(Frame)),
     retrieve_frame(WSReq, HandlerState, Buffer);
 handle_response(WSReq, {ok, HandlerState}, Buffer) ->
     retrieve_frame(WSReq, HandlerState, Buffer);
 handle_response(WSReq, {close, Payload, HandlerState}, _) ->
-    Socket = websocket_req:socket(WSReq),
-    Transport = websocket_req:transport(WSReq),
+    [Socket, Transport] = websocket_req:get([socket, transport], WSReq),
     ok = Transport:send(Socket, encode_frame({close, Payload})),
     websocket_close(WSReq, HandlerState, {normal, Payload}).
 
