@@ -101,7 +101,6 @@ websocket_handshake(WSReq) ->
     Path = websocket_req:path(WSReq),
     Host = websocket_req:host(WSReq),
     Key  = websocket_req:key(WSReq),
-
     Handshake = [<<"GET ">>, Path,
                  <<" HTTP/1.1"
                    "\r\nHost: ">>, Host,
@@ -143,7 +142,6 @@ websocket_loop(WSReq, HandlerState, Buffer) ->
     Remaining = websocket_req:remaining(WSReq),
     Socket = websocket_req:socket(WSReq),
     Transport = websocket_req:transport(WSReq),
-
     receive
         keepalive ->
             ok = Transport:send(Socket, encode_frame({ping, <<>>})),
@@ -153,7 +151,7 @@ websocket_loop(WSReq, HandlerState, Buffer) ->
             ok = Transport:send(Socket, encode_frame(Frame)),
             websocket_loop(WSReq, HandlerState, Buffer);
         {_Closed, Socket} ->
-            Handler:websocket_terminate({close, 0, <<>>}, WSReq, HandlerState);
+            websocket_close(WSReq, HandlerState);
         {_TransportType, Socket, Data} ->
             case Remaining of
                 undefined ->
@@ -169,6 +167,16 @@ websocket_loop(WSReq, HandlerState, Buffer) ->
             handle_response(WSReq, HandlerResponse, Buffer)
     end,
     ok.
+
+-spec websocket_close(WSReq :: websocket_req:req(), HandlerState :: any()) -> ok.
+websocket_close(WSReq, HandlerState) ->
+    websocket_close(WSReq, HandlerState, 0, <<>>).
+
+-spec websocket_close(WSReq :: websocket_req:req(), HandlerState :: any(),
+                      CloseCode :: 1000..4999, ClosePayload :: binary()) -> ok.
+websocket_close(WSReq, HandlerState, CloseCode, ClosePayload) ->
+    Handler = websocket_req:handler(WSReq),
+    Handler:websocket_terminate({close, CloseCode, ClosePayload}, WSReq, HandlerState).
 
 %% @doc Key sent in initial handshake
 -spec generate_ws_key() ->
@@ -213,23 +221,20 @@ retrieve_frame(WSReq, HandlerWSReq, Data) ->
 retrieve_frame(WSReq0, HandlerWSReq, Opcode, Len, Data, Buffer)
   when byte_size(Data) < Len ->
     Remaining = Len - byte_size(Data),
-
     WSReq1 = websocket_req:remaining(Remaining, WSReq0),
     WSReq  = websocket_req:opcode(Opcode, WSReq1),
     websocket_loop(WSReq, HandlerWSReq, << Buffer/bits, Data/bits >>);
 %% @doc Length known and remaining data is appended to the buffer
 retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
-
     Handler = websocket_req:handler(WSReq),
     Transport = websocket_req:transport(WSReq),
     Socket = websocket_req:socket(WSReq),
-
     << Payload:Len/binary, Rest/bits >> = Data,
     FullPayload = << Buffer/binary, Payload/binary >>,
     OpcodeName = websocket_req:opcode_to_name(Opcode),
     case OpcodeName of
         ping ->
-            %% If a ping is received, send a pong  automatically
+            %% If a ping is received, send a pong automatically
             ok = Transport:send(Socket, encode_frame({pong, FullPayload}));
         _ ->
             ok
@@ -238,11 +243,9 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
         close when byte_size(FullPayload) >= 2 ->
             << CodeBin:2/binary, ClosePayload/binary >> = FullPayload,
             Code = binary:decode_unsigned(CodeBin),
-            Handler:websocket_terminate({close, Code, ClosePayload},
-                                        WSReq, HandlerState);
+            websocket_close(WSReq, HandlerState, Code, ClosePayload);
         close ->
-            Handler:websocket_terminate({close, 0, <<>>}, 
-                                        WSReq, HandlerState);
+            websocket_close(WSReq, HandlerState);
         _ ->
             HandlerResponse = Handler:websocket_handle(
                                 {OpcodeName, FullPayload},
@@ -253,22 +256,17 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
 
 %% @doc Handles return values from the callback module
 handle_response(WSReq, {reply, Frame, HandlerState}, Buffer) ->
-
     Socket = websocket_req:socket(WSReq),
     Transport = websocket_req:transport(WSReq),
-
     ok = Transport:send(Socket, encode_frame(Frame)),
     retrieve_frame(WSReq, HandlerState, Buffer);
-
-handle_response(WSReq, {close, Payload, HandlerState}, Buffer) ->
+handle_response(WSReq, {ok, HandlerState}, Buffer) ->
+    retrieve_frame(WSReq, HandlerState, Buffer);
+handle_response(WSReq, {close, Payload, HandlerState}, _) ->
     Socket = websocket_req:socket(WSReq),
     Transport = websocket_req:transport(WSReq),
-
     ok = Transport:send(Socket, encode_frame({close, Payload})),
-    retrieve_frame(WSReq, HandlerState, Buffer);
-
-handle_response(WSReq, {ok, HandlerState}, Buffer) ->
-    retrieve_frame(WSReq, HandlerState, Buffer).
+    websocket_close(WSReq, HandlerState).
 
 %% @doc Encodes the data with a header (including a masking key) and
 %% masks the data
