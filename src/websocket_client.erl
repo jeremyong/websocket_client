@@ -4,7 +4,9 @@
 
 -export([
          start_link/3,
-         cast/2
+         async_send/2,
+         send/2,
+         send/3
         ]).
 
 -export([ws_client_init/6]).
@@ -22,11 +24,29 @@ start_link(URL, Handler, Args) ->
   end.
 
 %% Send a frame asynchronously
--spec cast(Client :: pid(), Frame :: websocket_req:frame()) ->
+-spec async_send(Client :: pid(), Frame :: websocket_req:frame()) ->
     ok.
-cast(Client, Frame) ->
-    Client ! {cast, Frame},
+async_send(Client, Frame) ->
+    Client ! {async_send, Frame},
     ok.
+
+-spec send(Client :: pid(), Frame :: websocket_req:frame()) ->
+    {ok, term()} | {error, term()}.
+send(Client, Frame) ->
+    send(Client, Frame, 5000).
+
+-spec send(Client :: pid(), Frame :: websocket_req:frame(), Timeout :: integer()) ->
+    {ok, websocket_req:frame()} | {error, term()}.
+send(Client, Frame, Timeout) ->
+    Client ! {send, self(), Ref = erlang:make_ref(), Frame},
+    receive
+        {reply, Ref, Reply} ->
+            Reply
+    after Timeout ->
+        {error, timeout}
+    end.
+
+    
 
 %% @doc Create socket, execute handshake, and enter loop
 -spec ws_client_init(Handler :: module(), Protocol :: websocket_req:protocol(),
@@ -143,8 +163,12 @@ websocket_loop(WSReq, HandlerState, Buffer) ->
             ok = Transport:send(Socket, encode_frame({ping, <<>>})),
             erlang:send_after(websocket_req:keepalive(WSReq), self(), keepalive),
             websocket_loop(WSReq, HandlerState, Buffer);
-        {cast, Frame} ->
+        {async_send, Frame} ->
             ok = Transport:send(Socket, encode_frame(Frame)),
+            websocket_loop(WSReq, HandlerState, Buffer);
+        {send, From, Ref, Frame} ->
+            Reply = Transport:send(Socket, encode_frame(Frame)),
+            From ! {reply, Ref, Reply},
             websocket_loop(WSReq, HandlerState, Buffer);
         {_Closed, Socket} ->
             websocket_close(WSReq, HandlerState, {remote, closed});

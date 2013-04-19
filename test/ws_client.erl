@@ -4,9 +4,7 @@
 
 -export([
          start_link/0,
-         send_text/2,
-         send_binary/2,
-         send_ping/2,
+         send/4,
          recv/1,
          stop/1
         ]).
@@ -29,14 +27,10 @@ start_link() ->
 stop(Pid) ->
     Pid ! stop.
 
-send_text(Pid, Msg) ->
-    websocket_client:cast(Pid, {text, Msg}).
-
-send_binary(Pid, Msg) ->
-    websocket_client:cast(Pid, {binary, Msg}).
-
-send_ping(Pid, Msg) ->
-    websocket_client:cast(Pid, {ping, Msg}).
+send(async, To, As, What) ->
+    websocket_client:async_send(To, {As, What});
+send(sync, To, As, What) ->
+    websocket_client:send(To, {As, What}).
 
 recv(Pid) ->
     Pid ! {recv, self()},
