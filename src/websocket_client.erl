@@ -31,12 +31,12 @@ async_send(Client, Frame) ->
     ok.
 
 -spec send(Client :: pid(), Frame :: websocket_req:frame()) ->
-    {ok, term()} | {error, term()}.
+    ok | {error, term()}.
 send(Client, Frame) ->
     send(Client, Frame, 5000).
 
 -spec send(Client :: pid(), Frame :: websocket_req:frame(), Timeout :: integer()) ->
-    {ok, websocket_req:frame()} | {error, term()}.
+    ok | {error, term()}.
 send(Client, Frame, Timeout) ->
     Client ! {send, self(), Ref = erlang:make_ref(), Frame},
     receive
