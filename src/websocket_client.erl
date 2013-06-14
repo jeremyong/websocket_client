@@ -297,13 +297,15 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
 %% @doc Handles return values from the callback module
 handle_response(WSReq, {reply, Frame, HandlerState}, Buffer) ->
     [Socket, Transport] = websocket_req:get([socket, transport], WSReq),
-    ok = Transport:send(Socket, encode_frame(Frame)),
-    retrieve_frame(WSReq, HandlerState, Buffer);
+    case Transport:send(Socket, encode_frame(Frame)) of
+      ok -> retrieve_frame(WSReq, HandlerState, Buffer);
+      Reason -> websocket_close(WSReq, HandlerState, Reason)
+    end;
 handle_response(WSReq, {ok, HandlerState}, Buffer) ->
     retrieve_frame(WSReq, HandlerState, Buffer);
 handle_response(WSReq, {close, Payload, HandlerState}, _) ->
     [Socket, Transport] = websocket_req:get([socket, transport], WSReq),
-    ok = Transport:send(Socket, encode_frame({close, Payload})),
+    Transport:send(Socket, encode_frame({close, Payload})),
     websocket_close(WSReq, HandlerState, {normal, Payload}).
 
 %% @doc Encodes the data with a header (including a masking key) and
