@@ -18,6 +18,6 @@
         | {reply, websocket_req:frame(), state()}
         | {close, binary(),  state()}.
 
--callback websocket_terminate({close_type(), binary()} | {close_type(), integer(), binary()},
+-callback websocket_terminate({close_type(), term()} | {close_type(), integer(), binary()},
                               websocket_req:req(), state()) ->
     ok.
