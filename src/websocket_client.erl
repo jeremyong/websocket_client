@@ -4,7 +4,8 @@
 
 -export([
          start_link/3,
-         cast/2
+         cast/2,
+         send/2
         ]).
 
 -export([ws_client_init/6]).
@@ -131,24 +132,31 @@ receive_handshake(Buffer, Transport, Socket) ->
                               Transport, Socket)
     end.
 
+%% @doc Send frame to server
+send(Frame, WSReq) ->
+  Socket = websocket_req:socket(WSReq),
+  Transport = websocket_req:transport(WSReq),
+  Transport:send(Socket, encode_frame(Frame)).
+
+
 %% @doc Main loop
 -spec websocket_loop(WSReq :: websocket_req:req(), HandlerState :: any(),
                      Buffer :: binary()) ->
     ok.
 websocket_loop(WSReq, HandlerState, Buffer) ->
-    [Handler, Remaining, Socket, Transport] =
-        websocket_req:get([handler, remaining, socket, transport], WSReq),
+    [Handler, Remaining, Socket] =
+        websocket_req:get([handler, remaining, socket], WSReq),
     receive
         keepalive ->
             case websocket_req:get([keepalive_timer], WSReq) of
               [undefined] -> ok;
               [OldTimer] -> erlang:cancel_timer(OldTimer)
             end,
-            ok = Transport:send(Socket, encode_frame({ping, <<>>})),
+            ok = send({ping, <<>>}, WSReq),
             KATimer = erlang:send_after(websocket_req:keepalive(WSReq), self(), keepalive),
             websocket_loop(websocket_req:set([{keepalive_timer,KATimer}], WSReq), HandlerState, Buffer);
         {cast, Frame} ->
-            ok = Transport:send(Socket, encode_frame(Frame)),
+            ok = send(Frame, WSReq),
             websocket_loop(WSReq, HandlerState, Buffer);
         {_Closed, Socket} ->
             websocket_close(WSReq, HandlerState, {remote, closed});
@@ -254,8 +262,7 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
     case OpcodeName of
         ping ->
             %% If a ping is received, send a pong automatically
-            [Transport, Socket] = websocket_req:get([transport, socket], WSReq),
-            ok = Transport:send(Socket, encode_frame({pong, FullPayload}));
+            ok = send({pong, FullPayload}, WSReq);
         _ ->
             ok
     end,
@@ -300,16 +307,14 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
 
 %% @doc Handles return values from the callback module
 handle_response(WSReq, {reply, Frame, HandlerState}, Buffer) ->
-    [Socket, Transport] = websocket_req:get([socket, transport], WSReq),
-    case Transport:send(Socket, encode_frame(Frame)) of
+    case send(Frame, WSReq) of
       ok -> retrieve_frame(WSReq, HandlerState, Buffer);
       Reason -> websocket_close(WSReq, HandlerState, Reason)
     end;
 handle_response(WSReq, {ok, HandlerState}, Buffer) ->
     retrieve_frame(WSReq, HandlerState, Buffer);
 handle_response(WSReq, {close, Payload, HandlerState}, _) ->
-    [Socket, Transport] = websocket_req:get([socket, transport], WSReq),
-    Transport:send(Socket, encode_frame({close, Payload})),
+    send({close, Payload}, WSReq),
     websocket_close(WSReq, HandlerState, {normal, Payload}).
 
 %% @doc Encodes the data with a header (including a masking key) and
