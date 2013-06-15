@@ -7,6 +7,7 @@
           port :: inet:port_number(),
           path :: string(),
           keepalive = infinity :: infinity | integer(),
+          keepalive_timer = undefined :: undefined | reference(),
           socket :: inet:socket() | ssl:sslsocket(),
           transport :: module(),
           handler :: module(),
@@ -229,6 +230,7 @@ set([{host, Val} | Tail], Req) -> set(Tail, Req#websocket_req{host = Val});
 set([{port, Val} | Tail], Req) -> set(Tail, Req#websocket_req{port = Val});
 set([{path, Val} | Tail], Req) -> set(Tail, Req#websocket_req{path = Val});
 set([{keepalive, Val} | Tail], Req) -> set(Tail, Req#websocket_req{keepalive = Val});
+set([{keepalive_timer, Val} | Tail], Req) -> set(Tail, Req#websocket_req{keepalive_timer = Val});
 set([{socket, Val} | Tail], Req) -> set(Tail, Req#websocket_req{socket = Val});
 set([{transport, Val} | Tail], Req) -> set(Tail, Req#websocket_req{transport = Val});
 set([{handler, Val} | Tail], Req) -> set(Tail, Req#websocket_req{handler = Val});

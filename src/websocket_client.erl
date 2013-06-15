@@ -85,13 +85,13 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                                         {ok, HS, KA} ->
                                             {ok, HS, KA}
                                     end,
-    case KeepAlive of
+    KATimer = case KeepAlive of
         infinity ->
-            ok;
+            undefined;
         _ ->
             erlang:send_after(KeepAlive, self(), keepalive)
     end,
-    websocket_loop(websocket_req:keepalive(KeepAlive, WSReq), HandlerState, <<>>).
+    websocket_loop(websocket_req:set([{keepalive,KeepAlive},{keepalive_timer,KATimer}], WSReq), HandlerState, <<>>).
 
 %% @doc Send http upgrade request and validate handshake response challenge
 -spec websocket_handshake(WSReq :: websocket_req:req()) ->
@@ -140,9 +140,13 @@ websocket_loop(WSReq, HandlerState, Buffer) ->
         websocket_req:get([handler, remaining, socket, transport], WSReq),
     receive
         keepalive ->
+            case websocket_req:get([keepalive_timer], WSReq) of
+              [undefined] -> ok;
+              [OldTimer] -> erlang:cancel_timer(OldTimer)
+            end,
             ok = Transport:send(Socket, encode_frame({ping, <<>>})),
-            erlang:send_after(websocket_req:keepalive(WSReq), self(), keepalive),
-            websocket_loop(WSReq, HandlerState, Buffer);
+            KATimer = erlang:send_after(websocket_req:keepalive(WSReq), self(), keepalive),
+            websocket_loop(websocket_req:set([{keepalive_timer,KATimer}], WSReq), HandlerState, Buffer);
         {cast, Frame} ->
             ok = Transport:send(Socket, encode_frame(Frame)),
             websocket_loop(WSReq, HandlerState, Buffer);
