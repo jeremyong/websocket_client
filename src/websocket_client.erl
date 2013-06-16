@@ -183,9 +183,10 @@ handle_websocket_message(WSReq, HandlerState, Buffer, Message) ->
               error_logger:error_msg(
                 "** Websocket client ~p terminating in ~p/~p~n"
                 "   for the reason ~p:~p~n"
+                "** Last message was ~p~n"
                 "** Handler state was ~p~n"
                 "** Stacktrace: ~p~n~n",
-                [Handler, websocket_info, 3, Class, Reason, HandlerState,
+                [Handler, websocket_info, 3, Class, Reason, Msg, HandlerState,
                   erlang:get_stacktrace()]),
               websocket_close(WSReq, HandlerState, Reason)
             end
@@ -327,9 +328,10 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
               error_logger:error_msg(
                 "** Websocket client ~p terminating in ~p/~p~n"
                 "   for the reason ~p:~p~n"
+                "** Websocket message was ~p~n"
                 "** Handler state was ~p~n"
                 "** Stacktrace: ~p~n~n",
-                [Handler, websocket_handle, 3, Class, Reason, HandlerState,
+                [Handler, websocket_handle, 3, Class, Reason, {ContinuationOpcodeName, DefragPayload}, HandlerState,
                   erlang:get_stacktrace()]),
               websocket_close(WSReq, HandlerState, Reason)
             end;
