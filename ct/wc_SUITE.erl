@@ -43,6 +43,11 @@ test_text_frames(_) ->
     Medium = medium_msg(),
     ws_client:send_text(Pid, Medium),
     {text, Medium} = ws_client:recv(Pid),
+
+    %% Now check that websocket_client:send is working
+    Pid ! {send_text, Medium},
+    {text, Medium} = ws_client:recv(Pid),
+
     %% Payload length greater than 65535
     Long = long_msg(),
     ws_client:send_text(Pid, Long),
