@@ -171,8 +171,19 @@ websocket_loop(WSReq, HandlerState, Buffer) ->
             end;
         Msg ->
             Handler = websocket_req:handler(WSReq),
-            HandlerResponse = Handler:websocket_info(Msg, WSReq, HandlerState),
-            handle_response(WSReq, HandlerResponse, Buffer)
+            try Handler:websocket_info(Msg, WSReq, HandlerState) of
+              HandlerResponse ->
+                handle_response(WSReq, HandlerResponse, Buffer)
+            catch Class:Reason ->
+              error_logger:error_msg(
+                "** Websocket client ~p terminating in ~p/~p~n"
+                "   for the reason ~p:~p~n"
+                "** Handler state was ~p~n"
+                "** Stacktrace: ~p~n~n",
+                [Handler, websocket_info, 3, Class, Reason, HandlerState,
+                  erlang:get_stacktrace()]),
+              websocket_close(WSReq, HandlerState, Reason)
+            end
     end,
     ok.
 
@@ -181,7 +192,16 @@ websocket_loop(WSReq, HandlerState, Buffer) ->
                       Reason :: tuple()) -> ok.
 websocket_close(WSReq, HandlerState, Reason) ->
     Handler = websocket_req:handler(WSReq),
-    Handler:websocket_terminate(Reason, WSReq, HandlerState).
+    try Handler:websocket_terminate(Reason, WSReq, HandlerState)
+    catch Class:Reason2 ->
+      error_logger:error_msg(
+        "** Websocket handler ~p terminating in ~p/~p~n"
+        "   for the reason ~p:~p~n"
+        "** Handler state was ~p~n"
+        "** Stacktrace: ~p~n~n",
+        [Handler, websocket_terminate, 3, Class, Reason2, HandlerState,
+          erlang:get_stacktrace()])
+    end.
 
 %% @doc Key sent in initial handshake
 -spec generate_ws_key() ->
@@ -292,17 +312,39 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
             WSReq1 = websocket_req:continuation(undefined, WSReq),
             WSReq2 = websocket_req:continuation_opcode(undefined, WSReq1),
             ContinuationOpcodeName = websocket_req:opcode_to_name(ContinuationOpcode),
-            HandlerResponse = Handler:websocket_handle(
+            try Handler:websocket_handle(
                                 {ContinuationOpcodeName, DefragPayload},
-                                WSReq2, HandlerState),
-            handle_response(websocket_req:remaining(undefined, WSReq1),
-                            HandlerResponse, Rest);
+                                WSReq2, HandlerState) of
+              HandlerResponse ->
+                handle_response(websocket_req:remaining(undefined, WSReq1),
+                                HandlerResponse, Rest)
+            catch Class:Reason ->
+              error_logger:error_msg(
+                "** Websocket client ~p terminating in ~p/~p~n"
+                "   for the reason ~p:~p~n"
+                "** Handler state was ~p~n"
+                "** Stacktrace: ~p~n~n",
+                [Handler, websocket_handle, 3, Class, Reason, HandlerState,
+                  erlang:get_stacktrace()]),
+              websocket_close(WSReq, HandlerState, Reason)
+            end;
         _ ->
-            HandlerResponse = Handler:websocket_handle(
+            try Handler:websocket_handle(
                                 {OpcodeName, FullPayload},
-                                WSReq, HandlerState),
-            handle_response(websocket_req:remaining(undefined, WSReq),
-                            HandlerResponse, Rest)
+                                WSReq, HandlerState) of
+              HandlerResponse ->
+                handle_response(websocket_req:remaining(undefined, WSReq),
+                                HandlerResponse, Rest)
+            catch Class:Reason ->
+              error_logger:error_msg(
+                "** Websocket client ~p terminating in ~p/~p~n"
+                "   for the reason ~p:~p~n"
+                "** Handler state was ~p~n"
+                "** Stacktrace: ~p~n~n",
+                [Handler, websocket_handle, 3, Class, Reason, HandlerState,
+                  erlang:get_stacktrace()]),
+              websocket_close(WSReq, HandlerState, Reason)
+            end
     end.
 
 %% @doc Handles return values from the callback module
