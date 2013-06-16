@@ -144,9 +144,14 @@ send(Frame, WSReq) ->
                      Buffer :: binary()) ->
     ok.
 websocket_loop(WSReq, HandlerState, Buffer) ->
+  receive
+    Message -> handle_websocket_message(WSReq, HandlerState, Buffer, Message)
+  end.
+
+handle_websocket_message(WSReq, HandlerState, Buffer, Message) ->
     [Handler, Remaining, Socket] =
         websocket_req:get([handler, remaining, socket], WSReq),
-    receive
+    case Message of
         keepalive ->
             case websocket_req:get([keepalive_timer], WSReq) of
               [undefined] -> ok;
