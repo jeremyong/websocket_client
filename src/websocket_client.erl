@@ -106,7 +106,7 @@ websocket_handshake(WSReq) ->
                    "\r\nConnection: Upgrade"
                    "\r\nSec-WebSocket-Key: ">>, Key,
                  <<"\r\nOrigin: ">>, atom_to_binary(Protocol, utf8), <<"://">>, Host,
-                 <<"\r\nSec-WebSocket-Protocol: "
+                 <<%"\r\nSec-WebSocket-Protocol: "
                    "\r\nSec-WebSocket-Version: 13"
                    "\r\n\r\n">>],
     Transport = websocket_req:transport(WSReq),
