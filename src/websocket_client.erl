@@ -11,19 +11,19 @@
 
 %% @doc Start the websocket client
 -spec start_link(URL :: string(), Handler :: module(), Args :: list()) ->
-    {ok, pid()} | {error, term()}.
+                        {ok, pid()} | {error, term()}.
 start_link(URL, Handler, Args) ->
-  case http_uri:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]) of
-    {ok, {Protocol, _, Host, Port, Path, Query}} ->
-      proc_lib:start_link(?MODULE, ws_client_init,
-               [Handler, Protocol, Host, Port, Path ++ Query, Args]);
-    {error, _} = Error ->
-      Error
-  end.
+    case http_uri:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]) of
+        {ok, {Protocol, _, Host, Port, Path, Query}} ->
+            proc_lib:start_link(?MODULE, ws_client_init,
+                                [Handler, Protocol, Host, Port, Path ++ Query, Args]);
+        {error, _} = Error ->
+            Error
+    end.
 
 %% Send a frame asynchronously
 -spec cast(Client :: pid(), Frame :: websocket_req:frame()) ->
-    ok.
+                  ok.
 cast(Client, Frame) ->
     Client ! {cast, Frame},
     ok.
@@ -32,7 +32,7 @@ cast(Client, Frame) ->
 -spec ws_client_init(Handler :: module(), Protocol :: websocket_req:protocol(),
                      Host :: string(), Port :: inet:port_number(), Path :: string(),
                      Args :: list()) ->
-    no_return().
+                            no_return().
 ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
     Transport = case Protocol of
                     wss ->
@@ -41,50 +41,55 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                         gen_tcp
                 end,
     SockReply = case Transport of
-                       ssl ->
-                           ssl:connect(Host, Port,
-                                       [{mode, binary},
-                                        {verify, verify_none},
-                                        {active, false},
-                                        {packet, 0}
-                                       ], 6000);
-                       gen_tcp ->
-                           gen_tcp:connect(Host, Port,
-                                           [binary,
-                                            {active, false},
-                                            {packet, 0}
-                                           ], 6000)
-                   end,
+                    ssl ->
+                        ssl:connect(Host, Port,
+                                    [{mode, binary},
+                                     {verify, verify_none},
+                                     {active, false},
+                                     {packet, 0}
+                                    ], 6000);
+                    gen_tcp ->
+                        gen_tcp:connect(Host, Port,
+                                        [binary,
+                                         {active, false},
+                                         {packet, 0}
+                                        ], 6000)
+                end,
     {ok, Socket} = case SockReply of
-      {ok, Sock} -> {ok, Sock};
-      {error, _} = ConnectError ->
-        proc_lib:init_ack(ConnectError),
-        exit(normal)
-    end,
+                       {ok, Sock} -> {ok, Sock};
+                       {error, _} = ConnectError ->
+                           proc_lib:init_ack(ConnectError),
+                           exit(normal)
+                   end,
     proc_lib:init_ack({ok, self()}),
     WSReq = websocket_req:new(
-      Protocol,
-      Host,
-      Port,
-      Path,
-      Socket,
-      Transport,
-      Handler,
-      generate_ws_key()
-    ),
-    ok = websocket_handshake(WSReq),
-    case Socket of
-        {sslsocket, _, _} ->
-            ssl:setopts(Socket, [{active, true}]);
-        _ ->
-            inet:setopts(Socket, [{active, true}])
-    end,
+              Protocol,
+              Host,
+              Port,
+              Path,
+              Socket,
+              Transport,
+              Handler,
+              generate_ws_key()
+             ),
+    {ok, Buffer} = websocket_handshake(WSReq),
     {ok, HandlerState, KeepAlive} = case Handler:init(Args, WSReq) of
                                         {ok, HS} ->
                                             {ok, HS, infinity};
                                         {ok, HS, KA} ->
                                             {ok, HS, KA}
                                     end,
+    case Socket of
+        {sslsocket, _, _} ->
+            ssl:setopts(Socket, [{active, true}]);
+        _ ->
+            inet:setopts(Socket, [{active, true}])
+    end,
+    %% Since we could have already received some data already, we simulate a Socket message.
+    case Buffer of
+        <<>> -> ok;
+        _    -> self() ! {Transport, Socket, Buffer}
+    end,
     case KeepAlive of
         infinity ->
             ok;
@@ -95,7 +100,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
 
 %% @doc Send http upgrade request and validate handshake response challenge
 -spec websocket_handshake(WSReq :: websocket_req:req()) ->
-    ok.
+                                 ok.
 websocket_handshake(WSReq) ->
     [Protocol, Path, Host, Key, Transport, Socket] =
         websocket_req:get([protocol, path, host, key, transport, socket], WSReq),
@@ -113,16 +118,16 @@ websocket_handshake(WSReq) ->
     Socket =    websocket_req:socket(WSReq),
     Transport:send(Socket, Handshake),
     {ok, HandshakeResponse} = receive_handshake(<<>>, Transport, Socket),
-    validate_handshake(HandshakeResponse, Key),
-    ok.
+    {ok, Buffer} = validate_handshake(HandshakeResponse, Key),
+    {ok, Buffer}.
 
 %% @doc Blocks and waits until handshake response data is received
 -spec receive_handshake(Buffer :: binary(),
                         Transport :: module(),
                         Socket :: term()) ->
-    {ok, binary()}.
+                               {ok, binary()}.
 receive_handshake(Buffer, Transport, Socket) ->
-    case re:run(Buffer, ".*\\r\\n\\r\\n") of
+    case re:run(Buffer, "\\r\\n\\r\\n") of
         {match, _} ->
             {ok, Buffer};
         _ ->
@@ -134,7 +139,7 @@ receive_handshake(Buffer, Transport, Socket) ->
 %% @doc Main loop
 -spec websocket_loop(WSReq :: websocket_req:req(), HandlerState :: any(),
                      Buffer :: binary()) ->
-    ok.
+                            ok.
 websocket_loop(WSReq, HandlerState, Buffer) ->
     [Handler, Remaining, Socket, Transport] =
         websocket_req:get([handler, remaining, socket, transport], WSReq),
@@ -173,21 +178,35 @@ websocket_close(WSReq, HandlerState, Reason) ->
 
 %% @doc Key sent in initial handshake
 -spec generate_ws_key() ->
-    binary().
+                             binary().
 generate_ws_key() ->
     base64:encode(crypto:rand_bytes(16)).
 
 %% @doc Validate handshake response challenge
 -spec validate_handshake(HandshakeResponse :: binary(), Key :: binary()) ->
-    ok.
+                                ok.
 validate_handshake(HandshakeResponse, Key) ->
     Challenge = base64:encode(
                   crypto:sha(<< Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>)),
-    {match, [Challenge]} = re:run(
-                             HandshakeResponse,
-                             ".*[s|S]ec-[w|W]eb[s|S]ocket-[a|A]ccept: (.*)\\r\\n.*",
-                             [{capture, [1], binary}]),
-    ok.
+    %% Consume the response...
+    {ok, _Status, Header, Buffer} = consume_response(HandshakeResponse),
+    %% ...and make sure the challenge is valid.
+    Challenge = proplists:get_value(<<"Sec-Websocket-Accept">>, Header),
+    {ok, Buffer}.
+
+%% @doc Consumes the HTTP response and extracts status, header and the body.
+consume_response(Response) ->
+    {ok, {http_response, Version, Code, Message}, Header} = erlang:decode_packet(http_bin, Response, []),
+    consume_response({Version, Code, Message}, Header, []).
+
+consume_response(Status, Response, HeaderAcc) ->
+    case erlang:decode_packet(httph_bin, Response, []) of
+        {ok, {http_header, _Length, Field, _Reserved, Value}, Rest} ->
+            consume_response(Status, Rest, [{Field, Value} | HeaderAcc]);
+
+        {ok, http_eoh, Body} ->
+            {ok, Status, HeaderAcc, Body}
+    end.
 
 %% @doc Start or continue continuation payload with length less than 126 bytes
 retrieve_frame(WSReq, HandlerWSReq,
@@ -298,8 +317,8 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
 handle_response(WSReq, {reply, Frame, HandlerState}, Buffer) ->
     [Socket, Transport] = websocket_req:get([socket, transport], WSReq),
     case Transport:send(Socket, encode_frame(Frame)) of
-      ok -> retrieve_frame(WSReq, HandlerState, Buffer);
-      Reason -> websocket_close(WSReq, HandlerState, Reason)
+        ok -> retrieve_frame(WSReq, HandlerState, Buffer);
+        Reason -> websocket_close(WSReq, HandlerState, Reason)
     end;
 handle_response(WSReq, {ok, HandlerState}, Buffer) ->
     retrieve_frame(WSReq, HandlerState, Buffer);
@@ -311,7 +330,7 @@ handle_response(WSReq, {close, Payload, HandlerState}, _) ->
 %% @doc Encodes the data with a header (including a masking key) and
 %% masks the data
 -spec encode_frame(websocket_req:frame()) ->
-    binary().
+                          binary().
 encode_frame({Type, Payload}) ->
     Opcode = websocket_req:name_to_opcode(Type),
     Len = iolist_size(Payload),
@@ -359,7 +378,7 @@ payload_length_to_binary(Len) when Len =< 16#7fffffffffffffff ->
 %% continuation to an empty binary. Otherwise, return the request object untouched.
 -spec set_continuation_if_empty(WSReq :: websocket_req:req(),
                                 Opcode :: websocket_req:opcode()) ->
-    websocket_req:req().
+                                       websocket_req:req().
 set_continuation_if_empty(WSReq, Opcode) ->
     case websocket_req:continuation(WSReq) of
         undefined ->

@@ -11,14 +11,16 @@
 -export([
          test_text_frames/1,
          test_binary_frames/1,
-         test_control_frames/1
+         test_control_frames/1,
+         test_quick_response/1
         ]).
 
 all() ->
     [
      test_text_frames,
      test_binary_frames,
-     test_control_frames
+     test_control_frames,
+     test_quick_response
     ].
 
 init_per_suite(Config) ->
@@ -82,15 +84,27 @@ test_control_frames(_) ->
     ws_client:stop(Pid),
     ok.
 
+test_quick_response(_) ->
+    %% Connect to the server and...
+    {ok, Pid} = ws_client:start_link("ws://localhost:8080/hello/?q=world!"),
+    %% ...make sure we receive the first frame.
+    {text, <<"world!">>} = ws_client:recv(Pid, 100),
+    ws_client:stop(Pid),
+    %% Also, make sure the HTTP response is parsed correctly.
+    {ok, Pid2} = ws_client:start_link("ws://localhost:8080/hello/?q=Hello%0D%0A%0D%0AWorld%0D%0A%0D%0A!"),
+    {text, <<"Hello\r\n\r\nWorld\r\n\r\n!">>} = ws_client:recv(Pid2, 100),
+    ws_client:stop(Pid2),
+    ok.
+
 short_msg() ->
     <<"hello">>.
 medium_msg() ->
     <<"ttttttttttttttttttttttttt"
-     "ttttttttttttttttttttttttt"
-     "ttttttttttttttttttttttttt"
-     "ttttttttttttttttttttttttt"
-     "ttttttttttttttttttttttttt"
-     "ttttttttttttttttttttttttt">>.
+      "ttttttttttttttttttttttttt"
+      "ttttttttttttttttttttttttt"
+      "ttttttttttttttttttttttttt"
+      "ttttttttttttttttttttttttt"
+      "ttttttttttttttttttttttttt">>.
 long_msg() ->
     Medium = medium_msg(),
     %% 600 bytes
@@ -103,3 +117,4 @@ long_msg() ->
     L3 = << L2/binary, L2/binary, L2/binary, L2/binary >>,
     %% 76800 bytes
     << L3/binary, L3/binary >>.
+
