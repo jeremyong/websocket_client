@@ -11,6 +11,7 @@
           transport :: module(),
           handler :: module(),
           key :: binary(),
+          options = [] :: list(),
           remaining = undefined :: undefined | integer(),
           fin = undefined :: undefined | fin(),
           opcode = undefined :: undefined | opcode(),
@@ -33,7 +34,7 @@
 -type fin() :: 0 | 1.
 -export_type([fin/0]).
 
--export([new/8,
+-export([new/8, new/9,
          protocol/2, protocol/1,
          host/2, host/1,
          port/2, port/1,
@@ -43,6 +44,7 @@
          transport/2, transport/1,
          handler/2, handler/1,
          key/2, key/1,
+         options/2, options/1,
          remaining/2, remaining/1,
          fin/2, fin/1,
          opcode/2, opcode/1,
@@ -60,6 +62,12 @@
           string(), inet:socket() | ssl:sslsocket(),
           module(), module(), binary()) -> req().
 new(Protocol, Host, Port, Path, Socket, Transport, Handler, Key) ->
+    new(Protocol, Host, Port, Path, Socket, Transport, Handler, Key, []).
+
+-spec new(protocol(), string(), inet:port_number(),
+          string(), inet:socket() | ssl:sslsocket(),
+          module(), module(), binary(), list()) -> req().
+new(Protocol, Host, Port, Path, Socket, Transport, Handler, Key, Options) ->
     #websocket_req{
      protocol = Protocol,
      host = Host,
@@ -68,7 +76,8 @@ new(Protocol, Host, Port, Path, Socket, Transport, Handler, Key) ->
      socket = Socket,
      transport = Transport,
      handler = Handler,
-     key = Key
+     key = Key,
+     options = Options
     }.
 
 
@@ -165,6 +174,14 @@ key(K, Req) ->
     Req#websocket_req{key = K}.
 
 
+-spec options(req()) -> list().
+options(#websocket_req{options = O}) -> O.
+
+-spec options(list(), req()) -> req().
+options(O, Req) ->
+    Req#websocket_req{options = O}.
+
+
 -spec remaining(req()) -> undefined | integer().
 remaining(#websocket_req{remaining = R}) -> R.
 
@@ -216,6 +233,7 @@ g(socket, #websocket_req{socket = Ret}) -> Ret;
 g(transport, #websocket_req{transport = Ret}) -> Ret;
 g(handler, #websocket_req{handler = Ret}) -> Ret;
 g(key, #websocket_req{key = Ret}) -> Ret;
+g(options, #websocket_req{options = Ret}) -> Ret;
 g(remaining, #websocket_req{remaining = Ret}) -> Ret;
 g(fin, #websocket_req{fin = Ret}) -> Ret;
 g(opcode, #websocket_req{opcode = Ret}) -> Ret;
@@ -233,6 +251,7 @@ set([{socket, Val} | Tail], Req) -> set(Tail, Req#websocket_req{socket = Val});
 set([{transport, Val} | Tail], Req) -> set(Tail, Req#websocket_req{transport = Val});
 set([{handler, Val} | Tail], Req) -> set(Tail, Req#websocket_req{handler = Val});
 set([{key, Val} | Tail], Req) -> set(Tail, Req#websocket_req{key = Val});
+set([{options, Val} | Tail], Req) -> set(Tail, Req#websocket_req{options = Val});
 set([{remaining, Val} | Tail], Req) -> set(Tail, Req#websocket_req{remaining = Val});
 set([{fin, Val} | Tail], Req) -> set(Tail, Req#websocket_req{fin = Val});
 set([{opcode, Val} | Tail], Req) -> set(Tail, Req#websocket_req{opcode = Val});
