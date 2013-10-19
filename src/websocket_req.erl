@@ -6,16 +6,17 @@
           host :: string(),
           port :: inet:port_number(),
           path :: string(),
-          keepalive = infinity :: infinity | integer(),
+          keepalive = infinity :: integer(),
+          keepalive_timer = undefined :: reference(),
           socket :: inet:socket() | ssl:sslsocket(),
           transport :: module(),
           handler :: module(),
           key :: binary(),
-          remaining = undefined :: undefined | integer(),
-          fin = undefined :: undefined | fin(),
-          opcode = undefined :: undefined | opcode(),
-          continuation = undefined :: undefined | binary(),
-          continuation_opcode = undefined :: undefined | opcode()
+          remaining = undefined :: integer(),
+          fin = undefined :: fin(),
+          opcode = undefined :: opcode(),
+          continuation = undefined :: binary(),
+          continuation_opcode = undefined :: opcode()
          }).
 
 -opaque req() :: #websocket_req{}.
@@ -229,6 +230,7 @@ set([{host, Val} | Tail], Req) -> set(Tail, Req#websocket_req{host = Val});
 set([{port, Val} | Tail], Req) -> set(Tail, Req#websocket_req{port = Val});
 set([{path, Val} | Tail], Req) -> set(Tail, Req#websocket_req{path = Val});
 set([{keepalive, Val} | Tail], Req) -> set(Tail, Req#websocket_req{keepalive = Val});
+set([{keepalive_timer, Val} | Tail], Req) -> set(Tail, Req#websocket_req{keepalive_timer = Val});
 set([{socket, Val} | Tail], Req) -> set(Tail, Req#websocket_req{socket = Val});
 set([{transport, Val} | Tail], Req) -> set(Tail, Req#websocket_req{transport = Val});
 set([{handler, Val} | Tail], Req) -> set(Tail, Req#websocket_req{handler = Val});

@@ -65,6 +65,9 @@ websocket_handle(Frame, _, State = #state{waiting = From}) ->
     From ! Frame,
     {ok, State#state{waiting = undefined}}.
 
+websocket_info({send_text, Text}, WSReq, State) ->
+    websocket_client:send({text, Text}, WSReq),
+    {ok, State};
 websocket_info({recv, From}, _, State = #state{buffer = []}) ->
     {ok, State#state{waiting = From}};
 websocket_info({recv, From}, _, State = #state{buffer = [Top|Rest]}) ->
