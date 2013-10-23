@@ -377,11 +377,25 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
 handle_response(WSReq, {reply, Frame, HandlerState}, Buffer) ->
     [Socket, Transport] = websocket_req:get([socket, transport], WSReq),
     case Transport:send(Socket, encode_frame(Frame)) of
-        ok -> retrieve_frame(WSReq, HandlerState, Buffer);
+        ok ->
+           %% we can still have more messages in buffer
+           case websocket_req:remaining(WSReq) of
+               %% buffer should not contain uncomplete messages
+               undefined -> retrieve_frame(WSReq, HandlerState, Buffer);
+               %% buffer contain uncomplete message that shouldnt be parsed
+               _ -> websocket_loop(WSReq, HandlerState, Buffer)
+           end;
         Reason -> websocket_close(WSReq, HandlerState, Reason)
     end;
 handle_response(WSReq, {ok, HandlerState}, Buffer) ->
-    retrieve_frame(WSReq, HandlerState, Buffer);
+    %% we can still have more messages in buffer
+    case websocket_req:remaining(WSReq) of
+        %% buffer should not contain uncomplete messages
+        undefined -> retrieve_frame(WSReq, HandlerState, Buffer);
+        %% buffer contain uncomplete message that shouldnt be parsed
+        _ -> websocket_loop(WSReq, HandlerState, Buffer)
+    end;
+
 handle_response(WSReq, {close, Payload, HandlerState}, _) ->
     send({close, Payload}, WSReq),
     websocket_close(WSReq, HandlerState, {normal, Payload}).
