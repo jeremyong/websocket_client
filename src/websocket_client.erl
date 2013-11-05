@@ -195,8 +195,7 @@ handle_websocket_message(WSReq, HandlerState, Buffer, Message) ->
                   erlang:get_stacktrace()]),
               websocket_close(WSReq, HandlerState, Reason)
             end
-    end,
-    ok.
+    end.
 
 -spec websocket_close(WSReq :: websocket_req:req(),
                       HandlerState :: any(),
