@@ -213,6 +213,7 @@ g(host, #websocket_req{host = Ret}) -> Ret;
 g(port, #websocket_req{port = Ret}) -> Ret;
 g(path, #websocket_req{path = Ret}) -> Ret;
 g(keepalive, #websocket_req{keepalive = Ret}) -> Ret;
+g(keepalive_timer, #websocket_req{keepalive_timer = Ret}) -> Ret;
 g(socket, #websocket_req{socket = Ret}) -> Ret;
 g(transport, #websocket_req{transport = Ret}) -> Ret;
 g(handler, #websocket_req{handler = Ret}) -> Ret;
