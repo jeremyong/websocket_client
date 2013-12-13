@@ -2,21 +2,21 @@
 -module(websocket_req).
 
 -record(websocket_req, {
-          protocol :: protocol(),
-          host :: string(),
-          port :: inet:port_number(),
-          path :: string(),
-          keepalive = infinity :: integer(),
-          keepalive_timer = undefined :: reference(),
-          socket :: inet:socket() | ssl:sslsocket(),
-          transport :: module(),
-          handler :: module(),
-          key :: binary(),
-          remaining = undefined :: integer(),
-          fin = undefined :: fin(),
-          opcode = undefined :: opcode(),
-          continuation = undefined :: binary(),
-          continuation_opcode = undefined :: opcode()
+          protocol                        :: protocol(),
+          host                            :: string(),
+          port                            :: inet:port_number(),
+          path                            :: string(),
+          keepalive = infinity            :: infinity | integer(),
+          keepalive_timer = undefined     :: undefined | reference(),
+          socket                          :: inet:socket() | ssl:sslsocket(),
+          transport                       :: module(),
+          handler                         :: module(),
+          key                             :: binary(),
+          remaining = undefined           :: undefined | integer(),
+          fin = undefined                 :: undefined | fin(),
+          opcode = undefined              :: undefined | opcode(),
+          continuation = undefined        :: undefined | binary(),
+          continuation_opcode = undefined :: undefined | opcode()
          }).
 
 -opaque req() :: #websocket_req{}.

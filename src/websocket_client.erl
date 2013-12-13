@@ -100,8 +100,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
     websocket_loop(websocket_req:set([{keepalive,KeepAlive},{keepalive_timer,KATimer}], WSReq), HandlerState, <<>>).
 
 %% @doc Send http upgrade request and validate handshake response challenge
--spec websocket_handshake(WSReq :: websocket_req:req()) ->
-                                 ok.
+-spec websocket_handshake(WSReq :: websocket_req:req()) -> {ok, binary()}.
 websocket_handshake(WSReq) ->
     [Protocol, Path, Host, Key, Transport, Socket] =
         websocket_req:get([protocol, path, host, key, transport, socket], WSReq),
@@ -195,8 +194,7 @@ handle_websocket_message(WSReq, HandlerState, Buffer, Message) ->
                   erlang:get_stacktrace()]),
               websocket_close(WSReq, HandlerState, Reason)
             end
-    end,
-    ok.
+    end.
 
 -spec websocket_close(WSReq :: websocket_req:req(),
                       HandlerState :: any(),
@@ -221,8 +219,7 @@ generate_ws_key() ->
     base64:encode(crypto:rand_bytes(16)).
 
 %% @doc Validate handshake response challenge
--spec validate_handshake(HandshakeResponse :: binary(), Key :: binary()) ->
-                                ok.
+-spec validate_handshake(HandshakeResponse :: binary(), Key :: binary()) -> {ok, binary()}.
 validate_handshake(HandshakeResponse, Key) ->
     Challenge = base64:encode(
                   crypto:sha(<< Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>)),
@@ -377,11 +374,25 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
 handle_response(WSReq, {reply, Frame, HandlerState}, Buffer) ->
     [Socket, Transport] = websocket_req:get([socket, transport], WSReq),
     case Transport:send(Socket, encode_frame(Frame)) of
-        ok -> retrieve_frame(WSReq, HandlerState, Buffer);
+        ok ->
+           %% we can still have more messages in buffer
+           case websocket_req:remaining(WSReq) of
+               %% buffer should not contain uncomplete messages
+               undefined -> retrieve_frame(WSReq, HandlerState, Buffer);
+               %% buffer contain uncomplete message that shouldnt be parsed
+               _ -> websocket_loop(WSReq, HandlerState, Buffer)
+           end;
         Reason -> websocket_close(WSReq, HandlerState, Reason)
     end;
 handle_response(WSReq, {ok, HandlerState}, Buffer) ->
-    retrieve_frame(WSReq, HandlerState, Buffer);
+    %% we can still have more messages in buffer
+    case websocket_req:remaining(WSReq) of
+        %% buffer should not contain uncomplete messages
+        undefined -> retrieve_frame(WSReq, HandlerState, Buffer);
+        %% buffer contain uncomplete message that shouldnt be parsed
+        _ -> websocket_loop(WSReq, HandlerState, Buffer)
+    end;
+
 handle_response(WSReq, {close, Payload, HandlerState}, _) ->
     send({close, Payload}, WSReq),
     websocket_close(WSReq, HandlerState, {normal, Payload}).
