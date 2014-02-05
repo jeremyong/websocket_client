@@ -62,7 +62,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                            proc_lib:init_ack(ConnectError),
                            exit(normal)
                    end,
-    proc_lib:init_ack({ok, self()}),
+
     WSReq = websocket_req:new(
               Protocol,
               Host,
@@ -80,6 +80,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                                         {ok, HS, KA} ->
                                             {ok, HS, KA}
                                     end,
+    proc_lib:init_ack({ok, self()}),
     case Socket of
         {sslsocket, _, _} ->
             ssl:setopts(Socket, [{active, true}]);
