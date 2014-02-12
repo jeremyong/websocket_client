@@ -223,7 +223,7 @@ generate_ws_key() ->
 -spec validate_handshake(HandshakeResponse :: binary(), Key :: binary()) -> {ok, binary()}.
 validate_handshake(HandshakeResponse, Key) ->
     Challenge = base64:encode(
-                  crypto:sha(<< Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>)),
+                  crypto:hash(sha, << Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>)),
     %% Consume the response...
     {ok, _Status, Header, Buffer} = consume_response(HandshakeResponse),
     %% ...and make sure the challenge is valid.
