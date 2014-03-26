@@ -1,5 +1,7 @@
 # Erlang Websocket Client
 
+[![Build Status](https://travis-ci.org/jeremyong/websocket_client.svg?branch=master)](https://travis-ci.org/jeremyong/websocket_client)
+
 ## Existing features
 
 1. Client to Server Masking
