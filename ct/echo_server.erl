@@ -19,7 +19,7 @@
 start() ->
     io:format("Starting echo server.~n"),
     Dispatch = cowboy_router:compile([{'_', [
-                                             {"/hello/", ?MODULE, []},
+                                             {"/hello", ?MODULE, []},
                                              {'_', ?MODULE, []}
                                             ]}]),
     {ok, _} = cowboy:start_http(echo_listener, 2, [
@@ -34,9 +34,11 @@ init(_, _Req, _Opts) ->
 
 websocket_init(_Transport, Req, _Opts) ->
     case cowboy_req:qs_val(<<"q">>, Req) of
-        {undefined, Req2} -> {ok, Req2, #state{}};
-        {Text, Req2}      -> self() ! {send, Text},
-                             {ok, Req2, #state{}}
+        {undefined, Req2} ->
+            {ok, Req2, #state{}};
+        {Text, Req2} ->
+            self() ! {send, Text},
+            {ok, Req2, #state{}}
     end.
 
 websocket_handle(Frame, Req, State) ->

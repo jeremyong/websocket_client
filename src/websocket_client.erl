@@ -104,16 +104,14 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
 websocket_handshake(WSReq) ->
     [Protocol, Path, Host, Key, Transport, Socket] =
         websocket_req:get([protocol, path, host, key, transport, socket], WSReq),
-    Handshake = [<<"GET ">>, Path,
-                 <<" HTTP/1.1"
-                   "\r\nHost: ">>, Host,
-                 <<"\r\nUpgrade: WebSocket"
-                   "\r\nConnection: Upgrade"
-                   "\r\nSec-WebSocket-Key: ">>, Key,
-                 <<"\r\nOrigin: ">>, atom_to_binary(Protocol, utf8), <<"://">>, Host,
-                 <<"\r\nSec-WebSocket-Protocol: "
-                   "\r\nSec-WebSocket-Version: 13"
-                   "\r\n\r\n">>],
+    Handshake = ["GET ", Path, " HTTP/1.1\r\n"
+                 "Host: ", Host, "\r\n"
+                 "Connection: Upgrade\r\n"
+                 "Origin: ", atom_to_binary(Protocol, utf8), "://", Host, "\r\n"
+                 "Sec-WebSocket-Version: 13\r\n"
+                 "Sec-WebSocket-Key: ", Key, "\r\n"
+                 "Upgrade: websocket\r\n"
+                 "\r\n"],
     Transport = websocket_req:transport(WSReq),
     Socket =    websocket_req:socket(WSReq),
     Transport:send(Socket, Handshake),

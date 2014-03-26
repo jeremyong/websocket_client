@@ -25,11 +25,14 @@ all() ->
 
 init_per_suite(Config) ->
     application:start(sasl),
+    application:start(asn1),
+    application:start(public_key),
+    application:start(ssl),
     crypto:start(),
+    application:start(cow_lib),
     application:start(ranch),
     application:start(cowboy),
     ok = echo_server:start(),
-    io:format("~p", [ws_client:module_info()]),
     Config.
 
 end_per_suite(Config) ->
@@ -122,4 +125,3 @@ long_msg() ->
     L3 = << L2/binary, L2/binary, L2/binary, L2/binary >>,
     %% 76800 bytes
     << L3/binary, L3/binary >>.
-
