@@ -5,7 +5,8 @@
   {registered, []},
   {applications, [
                   ssl,
-                  crypto
+                  crypto,
+                  intes
                  ]},
   {env, []}
  ]
