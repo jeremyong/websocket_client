@@ -112,8 +112,6 @@ websocket_handshake(WSReq) ->
                  "Sec-WebSocket-Key: ", Key, "\r\n"
                  "Upgrade: websocket\r\n"
                  "\r\n"],
-    Transport = websocket_req:transport(WSReq),
-    Socket =    websocket_req:socket(WSReq),
     Transport:send(Socket, Handshake),
     {ok, HandshakeResponse} = receive_handshake(<<>>, Transport, Socket),
     {ok, Buffer} = validate_handshake(HandshakeResponse, Key),
