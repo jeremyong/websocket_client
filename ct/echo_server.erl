@@ -33,12 +33,20 @@ init(_, _Req, _Opts) ->
     {upgrade, protocol, cowboy_websocket}.
 
 websocket_init(_Transport, Req, _Opts) ->
-    case cowboy_req:qs_val(<<"q">>, Req) of
+    case cowboy_req:qs_val(<<"code">>, Req) of
         {undefined, Req2} ->
-            {ok, Req2, #state{}};
-        {Text, Req2} ->
-            self() ! {send, Text},
-            {ok, Req2, #state{}}
+            case cowboy_req:qs_val(<<"q">>, Req2) of
+                {undefined, Req3} ->
+                    {ok, Req3, #state{}};
+                {Text, Req3} ->
+                    self() ! {send, Text},
+                    {ok, Req3, #state{}}
+            end;
+        {Code, Req2} ->
+            IntegerCode = list_to_integer(binary_to_list(Code)),
+            io:format("Shuting down on init using '~p' status code~n", [IntegerCode]),
+            {ok, Req3} = cowboy_req:reply(IntegerCode, Req2),
+            {shutdown, Req3}
     end.
 
 websocket_handle(Frame, Req, State) ->
