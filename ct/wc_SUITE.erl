@@ -20,18 +20,19 @@ all() ->
      test_text_frames,
      test_binary_frames,
      test_control_frames,
-     test_quick_response
+     test_quick_response,
+     test_bad_request
     ].
 
 init_per_suite(Config) ->
-    application:start(sasl),
-    application:start(asn1),
-    application:start(public_key),
-    application:start(ssl),
-    crypto:start(),
-    application:start(cow_lib),
-    application:start(ranch),
-    application:start(cowboy),
+    ok = application:start(sasl),
+    ok = application:start(asn1),
+    ok = crypto:start(),
+    ok = application:start(public_key),
+    ok = application:start(ssl),
+    ok = application:start(cowlib),
+    ok = application:start(ranch),
+    ok = application:start(cowboy),
     ok = echo_server:start(),
     Config.
 
