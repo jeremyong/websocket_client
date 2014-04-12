@@ -2,12 +2,10 @@ SHELL := /bin/bash
 .PHONY: all clean
 
 all:
-	mkdir -p ebin
-	erlc +debug_info -o ebin -pa ebin src/*.erl
-	erlc +debug_info -o ebin -pa examples src/*.erl
+	rebar compile
 
 clean:
-	rm -rf ebin
+	rebar clean
 
 test-deps:
 	git clone https://github.com/extend/cowboy.git test-deps/cowboy
