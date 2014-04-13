@@ -8,6 +8,7 @@
                   crypto,
                   inets
                  ]},
-  {env, []}
+  {env, []},
+  {modules, []}
  ]
 }.
