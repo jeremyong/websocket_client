@@ -12,7 +12,8 @@
          test_text_frames/1,
          test_binary_frames/1,
          test_control_frames/1,
-         test_quick_response/1
+         test_quick_response/1,
+         test_bad_request/1
         ]).
 
 all() ->
@@ -20,18 +21,19 @@ all() ->
      test_text_frames,
      test_binary_frames,
      test_control_frames,
-     test_quick_response
+     test_quick_response,
+     test_bad_request
     ].
 
 init_per_suite(Config) ->
-    application:start(sasl),
-    application:start(asn1),
-    application:start(public_key),
-    application:start(ssl),
-    crypto:start(),
-    application:start(cow_lib),
-    application:start(ranch),
-    application:start(cowboy),
+    ok = application:start(sasl),
+    ok = application:start(asn1),
+    ok = crypto:start(),
+    ok = application:start(public_key),
+    ok = application:start(ssl),
+    ok = application:start(cowlib),
+    ok = application:start(ranch),
+    ok = application:start(cowboy),
     ok = echo_server:start(),
     Config.
 
@@ -102,6 +104,12 @@ test_quick_response(_) ->
     {ok, Pid2} = ws_client:start_link("ws://localhost:8080/hello/?q=Hello%0D%0A%0D%0AWorld%0D%0A%0D%0A!"),
     {text, <<"Hello\r\n\r\nWorld\r\n\r\n!">>} = ws_client:recv(Pid2, 100),
     ws_client:stop(Pid2),
+    ok.
+
+test_bad_request(_) ->
+    %% Connect to the server and wait for a error
+    {error, {400, <<"Bad Request">>}} =  ws_client:start_link("ws://localhost:8080/hello/?code=400"),
+    {error, {403, <<"Forbidden">>}} =  ws_client:start_link("ws://localhost:8080/hello/?code=403"),
     ok.
 
 short_msg() ->

@@ -62,7 +62,6 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
                            proc_lib:init_ack(ConnectError),
                            exit(normal)
                    end,
-    proc_lib:init_ack({ok, self()}),
     WSReq = websocket_req:new(
               Protocol,
               Host,
@@ -73,34 +72,40 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args) ->
               Handler,
               generate_ws_key()
              ),
-    {ok, Buffer} = websocket_handshake(WSReq),
-    {ok, HandlerState, KeepAlive} = case Handler:init(Args, WSReq) of
-                                        {ok, HS} ->
-                                            {ok, HS, infinity};
-                                        {ok, HS, KA} ->
-                                            {ok, HS, KA}
-                                    end,
-    case Socket of
-        {sslsocket, _, _} ->
-            ssl:setopts(Socket, [{active, true}]);
-        _ ->
-            inet:setopts(Socket, [{active, true}])
-    end,
-    %% Since we could have already received some data already, we simulate a Socket message.
-    case Buffer of
-        <<>> -> ok;
-        _    -> self() ! {Transport, Socket, Buffer}
-    end,
-    KATimer = case KeepAlive of
-                  infinity ->
-                      undefined;
-                  _ ->
-                      erlang:send_after(KeepAlive, self(), keepalive)
-              end,
-    websocket_loop(websocket_req:set([{keepalive,KeepAlive},{keepalive_timer,KATimer}], WSReq), HandlerState, <<>>).
+    case websocket_handshake(WSReq) of
+        {error, _} = HandshakeError ->
+            proc_lib:init_ack(HandshakeError),
+            exit(normal);
+        {ok, Buffer} ->
+            proc_lib:init_ack({ok, self()}),
+            {ok, HandlerState, KeepAlive} = case Handler:init(Args, WSReq) of
+                                                {ok, HS} ->
+                                                    {ok, HS, infinity};
+                                                {ok, HS, KA} ->
+                                                    {ok, HS, KA}
+                                            end,
+            case Socket of
+                {sslsocket, _, _} ->
+                    ssl:setopts(Socket, [{active, true}]);
+                _ ->
+                    inet:setopts(Socket, [{active, true}])
+            end,
+            %% Since we could have already received some data already, we simulate a Socket message.
+            case Buffer of
+                <<>> -> ok;
+                _    -> self() ! {Transport, Socket, Buffer}
+            end,
+            KATimer = case KeepAlive of
+                          infinity ->
+                              undefined;
+                          _ ->
+                              erlang:send_after(KeepAlive, self(), keepalive)
+                      end,
+            websocket_loop(websocket_req:set([{keepalive,KeepAlive},{keepalive_timer,KATimer}], WSReq), HandlerState, <<>>)
+  end.
 
 %% @doc Send http upgrade request and validate handshake response challenge
--spec websocket_handshake(WSReq :: websocket_req:req()) -> {ok, binary()}.
+-spec websocket_handshake(WSReq :: websocket_req:req()) -> {ok, binary()} | {error, term()}.
 websocket_handshake(WSReq) ->
     [Protocol, Path, Host, Key, Transport, Socket] =
         websocket_req:get([protocol, path, host, key, transport, socket], WSReq),
@@ -114,8 +119,7 @@ websocket_handshake(WSReq) ->
                  "\r\n"],
     Transport:send(Socket, Handshake),
     {ok, HandshakeResponse} = receive_handshake(<<>>, Transport, Socket),
-    {ok, Buffer} = validate_handshake(HandshakeResponse, Key),
-    {ok, Buffer}.
+    validate_handshake(HandshakeResponse, Key).
 
 %% @doc Blocks and waits until handshake response data is received
 -spec receive_handshake(Buffer :: binary(),
@@ -215,15 +219,21 @@ generate_ws_key() ->
     base64:encode(crypto:rand_bytes(16)).
 
 %% @doc Validate handshake response challenge
--spec validate_handshake(HandshakeResponse :: binary(), Key :: binary()) -> {ok, binary()}.
+-spec validate_handshake(HandshakeResponse :: binary(), Key :: binary()) -> {ok, binary()} | {error, term()}.
 validate_handshake(HandshakeResponse, Key) ->
     Challenge = base64:encode(
                   crypto:hash(sha, << Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" >>)),
     %% Consume the response...
-    {ok, _Status, Header, Buffer} = consume_response(HandshakeResponse),
-    %% ...and make sure the challenge is valid.
-    Challenge = proplists:get_value(<<"Sec-Websocket-Accept">>, Header),
-    {ok, Buffer}.
+    {ok, Status, Header, Buffer} = consume_response(HandshakeResponse),
+    {_Version, Code, Message} = Status,
+    case Code of
+        % 101 means Switching Protocol
+        101 ->
+            %% ...and make sure the challenge is valid.
+            Challenge = proplists:get_value(<<"Sec-Websocket-Accept">>, Header),
+            {ok, Buffer};
+        _ -> {error, {Code, Message}}
+    end.
 
 %% @doc Consumes the HTTP response and extracts status, header and the body.
 consume_response(Response) ->
