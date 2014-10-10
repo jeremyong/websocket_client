@@ -81,8 +81,7 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args, Opts) ->
               Path,
               Socket,
               Transport,
-              Handler,
-              generate_ws_key()
+              Handler
              ),
     ExtraHeaders = proplists:get_value(extra_headers, Opts, []),
     case websocket_handshake(WSReq, ExtraHeaders) of
@@ -228,11 +227,6 @@ websocket_close(WSReq, HandlerState, Reason) ->
           erlang:get_stacktrace()])
     end.
 
-%% @doc Key sent in initial handshake
--spec generate_ws_key() ->
-                             binary().
-generate_ws_key() ->
-    base64:encode(crypto:rand_bytes(16)).
 
 %% @doc Validate handshake response challenge
 -spec validate_handshake(HandshakeResponse :: binary(), Key :: binary()) -> {ok, binary()} | {error, term()}.
