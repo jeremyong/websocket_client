@@ -15,6 +15,9 @@
 
 -export([
          init/2,
+         terminate/2,
+         handle_info/2,
+         websocket_init/2,
          websocket_handle/3,
          websocket_info/3,
          websocket_terminate/3
@@ -54,7 +57,16 @@ recv(Pid, Timeout) ->
         Timeout -> error
     end.
 
-init(_, _WSReq) ->
+init(Args, WSUri) ->
+    {ok, Args, WSUri}.
+
+terminate(_Reason, _WSUri) ->
+    ok.
+
+handle_info(Msg, WSUri) ->
+    {noreply, WSUri}.
+
+websocket_init(_, _WSReq) ->
     {ok, #state{}}.
 
 websocket_handle(Frame, _, State = #state{waiting = undefined, buffer = Buffer}) ->
