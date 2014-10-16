@@ -245,8 +245,8 @@ handle_websocket_message(WSReq, HandlerState, Buffer, Message) ->
         {cast, Frame} ->
             ok = send(Frame, WSReq),
             websocket_loop(WSReq, HandlerState, Buffer);
-        {_Closed, Socket} ->
-            websocket_close(WSReq, HandlerState, {remote, closed});
+        {Closed, Socket} ->
+            websocket_close(WSReq, HandlerState, {remote, Closed});
         {_TransportType, Socket, Data} ->
             case Remaining of
                 undefined ->
