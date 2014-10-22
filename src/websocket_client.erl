@@ -154,8 +154,8 @@ ws_connection_init(Handler, HandlerArgs, #ws_uri{
             WSReq0 = websocket_req:new( Protocol, Host, Port, Path, Socket, transport(Protocol), Handler),
             ExtraHeaders = proplists:get_value(extra_headers, Opts, []),
             case websocket_handshake(WSReq0, ExtraHeaders) of
-                {error, _} = HandshakeError ->
-                    HandshakeError;
+                {error, HandshakeError} ->
+                    {error, {handshake, HandshakeError}};
                 {ok, Buffer} ->
                     {ok, HandlerState, WSReq1} = case Handler:websocket_init(HandlerArgs, WSReq0) of
                         {ok, HS} -> {ok, HS, WSReq0};
@@ -198,8 +198,12 @@ websocket_handshake(WSReq, ExtraHeaders) ->
                  [ [Header, ": ", Value, "\r\n"] || {Header, Value} <- ExtraHeaders],
                  "\r\n"],
     Transport:send(Socket, Handshake),
-    {ok, HandshakeResponse} = receive_handshake(<<>>, Transport, Socket),
-    validate_handshake(HandshakeResponse, Key).
+    case receive_handshake(<<>>, Transport, Socket) of
+        {ok, HandshakeResponse} ->
+            validate_handshake(HandshakeResponse, Key);
+        {error, _} = Error ->
+            Error
+    end.
 
 %% @doc Blocks and waits until handshake response data is received
 -spec receive_handshake(Buffer :: binary(),
@@ -208,12 +212,15 @@ websocket_handshake(WSReq, ExtraHeaders) ->
                                {ok, binary()}.
 receive_handshake(Buffer, Transport, Socket) ->
     case re:run(Buffer, "\\r\\n\\r\\n") of
-        {match, _} ->
-            {ok, Buffer};
+        {match, _} -> {ok, Buffer};
         _ ->
-            {ok, Data} = Transport:recv(Socket, 0, 6000),
-            receive_handshake(<< Buffer/binary, Data/binary >>,
-                              Transport, Socket)
+            case Transport:recv(Socket, 0, 6000) of
+                {ok, Data} ->
+                    NewBuffer = <<Buffer/binary, Data/binary>>,
+                    receive_handshake(NewBuffer, Transport, Socket);
+                {error, _} = Error ->
+                    Error
+            end
     end.
 
 %% @doc Send frame to server
