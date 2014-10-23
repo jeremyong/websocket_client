@@ -155,7 +155,7 @@ ws_connection_init(Handler, HandlerArgs, #ws_uri{
             ExtraHeaders = proplists:get_value(extra_headers, Opts, []),
             case websocket_handshake(WSReq0, ExtraHeaders) of
                 {error, HandshakeError} ->
-                    {error, {handshake, HandshakeError}};
+                    {error, HandshakeError};
                 {ok, Buffer} ->
                     {ok, HandlerState, WSReq1} = case Handler:websocket_init(HandlerArgs, WSReq0) of
                         {ok, HS} -> {ok, HS, WSReq0};
