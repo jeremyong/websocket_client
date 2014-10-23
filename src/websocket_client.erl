@@ -399,7 +399,7 @@ retrieve_frame(WSReq, HandlerState, Opcode, Len, Data, Buffer) ->
             << CodeBin:2/binary, ClosePayload/binary >> = FullPayload,
             Code = binary:decode_unsigned(CodeBin),
             Reason = case Code of
-                         1000 -> {normal, ClosePayload};
+                         1000 -> {remote, ClosePayload};
                          1002 -> {error, badframe, ClosePayload};
                          1007 -> {error, badencoding, ClosePayload};
                          1011 -> {error, handler, ClosePayload};
