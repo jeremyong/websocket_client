@@ -8,6 +8,7 @@
          cast/2,
          send/2
         ]).
+-export([parse_uri/1]).
 
 -export([handler_init/4]).
 
@@ -30,7 +31,7 @@ start_link(URL, Handler, HandlerArgs) ->
     start_link(URL, Handler, HandlerArgs, []).
 
 start_link(URL, Handler, HandlerArgs, Opts) when is_list(Opts) ->
-    case http_uri:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]) of
+    case parse_uri(URL) of
         {ok, {Protocol, _, Host, Port, Path, Query}} ->
             WsUri = #ws_uri{
                 protocol = Protocol,
@@ -52,6 +53,13 @@ start_link(URL, Handler, HandlerArgs, Opts) when is_list(Opts) ->
         {error, _} = Error ->
             Error
     end.
+
+
+-spec parse_uri(URL :: string()) ->
+        {ok, any()} | {error, any()}.
+parse_uri(URL) ->
+    http_uri:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]).
+
 
 %% Send a frame asynchronously
 -spec cast(Client :: pid(), Frame :: websocket_req:frame()) ->

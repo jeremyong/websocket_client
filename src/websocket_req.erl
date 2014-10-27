@@ -50,7 +50,8 @@
          opcode/2, opcode/1,
          continuation/2, continuation/1,
          continuation_opcode/2, continuation_opcode/1,
-         get/2, set/2
+         get/2, set/2,
+         valid_frame/1
         ]).
 
 -export([
@@ -221,6 +222,21 @@ set([{opcode, Val} | Tail], Req) -> set(Tail, Req#websocket_req{opcode = Val});
 set([{continuation, Val} | Tail], Req) -> set(Tail, Req#websocket_req{continuation = Val});
 set([{continuation_opcode, Val} | Tail], Req) -> set(Tail, Req#websocket_req{continuation_opcode = Val});
 set([], Req) -> Req.
+
+
+-spec valid_frame(any()) -> true | false.
+valid_frame(close) -> true;
+valid_frame(ping) -> true;
+valid_frame(pong) -> true;
+valid_frame({text, Binary}) when is_binary(Binary) -> true;
+valid_frame({binary, Binary}) when is_binary(Binary) -> true;
+valid_frame({close, Binary}) when is_binary(Binary) -> true;
+valid_frame({ping, Binary}) when is_binary(Binary) -> true;
+valid_frame({pong, Binary}) when is_binary(Binary) -> true;
+valid_frame({close, Code, Binary}) when is_binary(Binary) ->
+    Code >= 1000 andalso Code < 5000;
+valid_frame(_) -> false.
+
 
 %% @doc Key sent in initial handshake
 -spec generate_key() -> binary().
