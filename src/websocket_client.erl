@@ -486,9 +486,12 @@ handle_response(WSReq, {ok, HandlerState}, Buffer) ->
         _ -> websocket_loop(WSReq, HandlerState, Buffer)
     end;
 
-handle_response(WSReq, {close, Payload, HandlerState}, _) ->
+handle_response(WSReq, {close, Payload, HandlerState}, _) when is_binary(Payload) ->
     send({close, Payload}, WSReq),
-    websocket_close(WSReq, HandlerState, {normal, Payload}).
+    websocket_close(WSReq, HandlerState, {normal, Payload});
+
+handle_response(WSReq, {close, Error, HandlerState}, _) ->
+    websocket_close(WSReq, HandlerState, Error).
 
 %% @doc Encodes the data with a header (including a masking key) and
 %% masks the data
