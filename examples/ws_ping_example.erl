@@ -5,6 +5,9 @@
 -export([
          start_link/0,
          init/2,
+         terminate/2,
+         handle_info/2,
+         websocket_init/2,
          websocket_handle/3,
          websocket_info/3,
          websocket_terminate/3
@@ -15,10 +18,27 @@ start_link() ->
     ssl:start(),
     websocket_client:start_link("wss://echo.websocket.org", ?MODULE, []).
 
-init([], _ConnState) ->
+init([], WsUri) ->
+    WsInitArgs = [
+        {start_state, 2},
+        {ping_interval, 1000}
+    ],
+    {ok, WsInitArgs, WsUri}.
+
+terminate(_Reason, _WsUri) ->
+    ok.
+
+handle_info(_Msg, WsUri) ->
+    {noreply, WsUri}.
+
+
+websocket_init(Args, _ConnState) ->
     websocket_client:cast(self(), {text, <<"message 1">>}),
     %% Execute a ping every 1000 milliseconds
-    {ok, 2, 1000}.
+    {ok,
+        proplists:get_value(start_state, Args),
+        proplists:get_value(ping_interval, Args)
+    }.
 
 websocket_handle({pong, _Msg}, _ConnState, State) ->
     io:format("Received pong ~n"),

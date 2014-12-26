@@ -6,3 +6,5 @@ erl_crash.dump
 log/*
 .ct_results
 test-deps
+.erlang.mk.packages.v1
+.rebar/

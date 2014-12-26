@@ -24,6 +24,9 @@ directory. Writing a handler is easy:
 -export([
          start_link/0,
          init/2,
+         terminate/2,
+         handle_info/2,
+         websocket_init/2,
          websocket_handle/3,
          websocket_info/3,
          websocket_terminate/3
@@ -34,17 +37,28 @@ start_link() ->
     ssl:start(),
     websocket_client:start_link("wss://echo.websocket.org", ?MODULE, []).
 
-init([], _ConnState) ->
-    websocket_client:cast(self(), {text, <<"message 1">>}),
-    {ok, 2}.
+
+init([], WsUri) ->
+    {ok, 2, WsUri}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+handle_info(_Msg, State) ->
+    {noreply, State}.
+
+
+websocket_init(StartCount, _ConnState) ->
+    websocket_client:cast(self(), {text, <<"init message">>}),
+    {ok, StartCount}.
 
 websocket_handle({pong, _}, _ConnState, State) ->
     {ok, State};
-websocket_handle({text, Msg}, _ConnState, 5) ->
-    io:format("Received msg ~p~n", [Msg]),
-    {close, <<>>, 10};
+websocket_handle({text, Msg}, _ConnState, 5 = State) ->
+    io:format("Received msg: ~p; state: ~p~n", [Msg, State]),
+    {close, <<>>, "done"};
 websocket_handle({text, Msg}, _ConnState, State) ->
-    io:format("Received msg ~p~n", [Msg]),
+    io:format("Received msg: ~p; state: ~p~n", [Msg, State]),
     timer:sleep(1000),
     BinInt = list_to_binary(integer_to_list(State)),
     {reply, {text, <<"hello, this is message #", BinInt/binary >>}, State + 1}.
@@ -52,21 +66,21 @@ websocket_handle({text, Msg}, _ConnState, State) ->
 websocket_info(start, _ConnState, State) ->
     {reply, {text, <<"erlang message received">>}, State}.
 
-websocket_terminate({close, Code, Payload}, _ConnState, State) ->
-    io:format("Websocket closed in state ~p wih code ~p and payload ~p~n",
-              [State, Code, Payload]),
+websocket_terminate(Reason, _ConnState, State) ->
+    io:format("Websocket closed in state ~p wih reason ~p~n",
+              [State, Reason]),
     ok.
 ```
 
-The above code will send messages to the echo server that count up
-from 1. It will also print all replies from the server:
+The above code will send messages to the echo server.
+It will also print all replies from the server:
 
 ```
-Received msg <<"this is message 1">>
-Received msg <<"hello, this is message #3">>
-Received msg <<"hello, this is message #4">>
-Received msg <<"hello, this is message #5">>
-Received msg <<"hello, this is message #6">>
+Received msg: <<"init message">>; state: 2
+Received msg: <<"hello, this is message #2">>; state: 3
+Received msg: <<"hello, this is message #3">>; state: 4
+Received msg: <<"hello, this is message #4">>; state: 5
+Websocket closed in state "done" wih reason {normal,<<>>}
 ...
 ```
 

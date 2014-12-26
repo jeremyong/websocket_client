@@ -3,8 +3,22 @@
 -type state() :: any().
 -type keepalive() :: integer().
 -type close_type() :: normal | error | remote.
+-type delay() :: integer() | infinity.
 
--callback init(list(), websocket_req:req()) ->
+-callback init(list(), state()) ->
+    {ok, list(), state()}
+        | {ok, list(), state(), delay()}.
+
+-callback terminate(any(), state()) ->
+    ok.
+
+-callback handle_info(any(), state()) ->
+    {noreply, state()}
+        | {connect, state()}
+        | {connect, list(), state()}
+        | {stop, any(), state()}.
+
+-callback websocket_init(list(), websocket_req:req()) ->
     {ok, state()}
         | {ok, state(), keepalive()}.
 
