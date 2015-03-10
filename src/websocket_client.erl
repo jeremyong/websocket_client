@@ -18,13 +18,15 @@
 -type opts() :: [opt()].
 
 %% @doc Start the websocket client
--spec start_link(URL :: string(), Handler :: module(), HandlerArgs :: list()) ->
+-spec start_link(URL :: string() | binary(), Handler :: module(), HandlerArgs :: list()) ->
                         {ok, pid()} | {error, term()}.
 start_link(URL, Handler, HandlerArgs) ->
     start_link(URL, Handler, HandlerArgs, []).
 
 start_link(URL, Handler, HandlerArgs, AsyncStart) when is_boolean(AsyncStart) ->
     start_link(URL, Handler, HandlerArgs, [{async_start, AsyncStart}]);
+start_link(URL, Handler, HandlerArgs, Opts) when is_binary(URL) ->
+	start_link(erlang:binary_to_list(URL), Handler, HandlerArgs, Opts);
 start_link(URL, Handler, HandlerArgs, Opts) when is_list(Opts) ->
     case http_uri:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]) of
         {ok, {Protocol, _, Host, Port, Path, Query}} ->
