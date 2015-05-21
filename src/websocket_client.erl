@@ -154,11 +154,11 @@ receive_handshake(Buffer, Transport, Socket) ->
     end.
 
 %% @doc Send frame to server
+-spec send(websocket_req:frame(), websocket_req:req()) -> ok | {error, term()}.
 send(Frame, WSReq) ->
   Socket = websocket_req:socket(WSReq),
   Transport = websocket_req:transport(WSReq),
   Transport:send(Socket, encode_frame(Frame)).
-
 
 %% @doc Main loop
 -spec websocket_loop(WSReq :: websocket_req:req(), HandlerState :: any(),
@@ -166,7 +166,7 @@ send(Frame, WSReq) ->
                             ok.
 websocket_loop(WSReq, HandlerState, Buffer) ->
   receive
-    Message -> handle_websocket_message(WSReq, HandlerState, Buffer, Message)
+      Message -> handle_websocket_message(WSReq, HandlerState, Buffer, Message)
   end.
 
 handle_websocket_message(WSReq, HandlerState, Buffer, Message) ->
@@ -174,13 +174,10 @@ handle_websocket_message(WSReq, HandlerState, Buffer, Message) ->
         websocket_req:get([handler, remaining, socket], WSReq),
     case Message of
         keepalive ->
-            case websocket_req:get([keepalive_timer], WSReq) of
-              [undefined] -> ok;
-              [OldTimer] -> erlang:cancel_timer(OldTimer)
-            end,
+            cancel_keepalive_timer(WSReq),
             ok = send({ping, <<>>}, WSReq),
             KATimer = erlang:send_after(websocket_req:keepalive(WSReq), self(), keepalive),
-            websocket_loop(websocket_req:set([{keepalive_timer,KATimer}], WSReq), HandlerState, Buffer);
+            websocket_loop(websocket_req:keepalive_timer(KATimer, WSReq), HandlerState, Buffer);
         {cast, Frame} ->
             ok = send(Frame, WSReq),
             websocket_loop(WSReq, HandlerState, Buffer);
@@ -196,7 +193,6 @@ handle_websocket_message(WSReq, HandlerState, Buffer, Message) ->
                                    websocket_req:opcode(WSReq), Remaining, Data, Buffer)
             end;
         Msg ->
-            Handler = websocket_req:handler(WSReq),
             try Handler:websocket_info(Msg, WSReq, HandlerState) of
               HandlerResponse ->
                 handle_response(WSReq, HandlerResponse, Buffer)
@@ -211,6 +207,16 @@ handle_websocket_message(WSReq, HandlerState, Buffer, Message) ->
                   erlang:get_stacktrace()]),
               websocket_close(WSReq, HandlerState, Reason)
             end
+    end.
+
+-spec cancel_keepalive_timer(websocket_req:req()) -> ok.
+cancel_keepalive_timer(WSReq) ->
+    case websocket_req:keepalive_timer(WSReq) of
+        undefined ->
+            ok;
+        OldTimer ->
+            erlang:cancel_timer(OldTimer),
+            ok
     end.
 
 -spec websocket_close(WSReq :: websocket_req:req(),

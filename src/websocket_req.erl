@@ -40,6 +40,7 @@
          port/2, port/1,
          path/2, path/1,
          keepalive/2, keepalive/1,
+         keepalive_timer/2, keepalive_timer/1,
          socket/2, socket/1,
          transport/2, transport/1,
          handler/2, handler/1,
@@ -132,6 +133,14 @@ keepalive(#websocket_req{keepalive = K}) -> K.
 -spec keepalive(integer(), req()) -> req().
 keepalive(K, Req) ->
     Req#websocket_req{keepalive = K}.
+
+
+-spec keepalive_timer(req()) -> undefined | reference().
+keepalive_timer(#websocket_req{keepalive_timer = K}) -> K.
+
+-spec keepalive_timer(reference(), req()) -> req().
+keepalive_timer(K, Req) ->
+    Req#websocket_req{keepalive_timer = K}.
 
 
 -spec socket(req()) -> inet:socket() | ssl:sslsocket().
