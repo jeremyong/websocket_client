@@ -216,13 +216,7 @@ cancel_keepalive_timer(WSReq) ->
                       Reason :: tuple()) -> ok.
 websocket_close(WSReq, HandlerState, Reason) ->
     Handler = websocket_req:handler(WSReq),
-    try Handler:websocket_terminate(Reason, WSReq, HandlerState) of
-        _ ->
-            case Reason of
-                normal -> ok;
-                _      -> error_info(Handler, Reason, HandlerState)
-            end,
-            exit(Reason)
+    try Handler:websocket_terminate(Reason, WSReq, HandlerState)
     catch
         _:Reason2 ->
             error_info(Handler, Reason2, HandlerState),
