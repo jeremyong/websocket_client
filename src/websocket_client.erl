@@ -233,9 +233,9 @@ error_info(Handler, Reason, State) ->
     error_logger:error_msg(
         "** Websocket handler ~p terminating~n"
         "** for the reason ~p~n"
-        "** Handler state was ~p~n"
-        "** Stacktrace: ~p~n~n",
-        [Handler, Reason, State, erlang:get_stacktrace()]).
+        "** Stacktrace: ~p~n~n"
+        "** Handler state was ~p~n",
+        [Handler, Reason, erlang:get_stacktrace(), State]).
 
 %% @doc Key sent in initial handshake
 -spec generate_ws_key() ->
