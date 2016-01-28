@@ -1,4 +1,4 @@
-SHELL := /bin/bash
+SHELL := /usr/bin/env bash
 PROJECT = websocket_client
 
 include erlang.mk
