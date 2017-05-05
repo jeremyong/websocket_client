@@ -93,11 +93,15 @@ ws_client_init(Handler, Protocol, Host, Port, Path, Args, Opts) ->
         {ok, Buffer} ->
             AsyncStart = proplists:get_value(async_start, Opts, true),
             AsyncStart andalso proc_lib:init_ack({ok, self()}),
-            {ok, HandlerState, KeepAlive} = case Handler:init(Args, WSReq) of
+            {ok, HandlerState, KeepAlive} = try Handler:init(Args, WSReq) of
                                                 {ok, HS} ->
                                                     {ok, HS, infinity};
                                                 {ok, HS, KA} ->
                                                     {ok, HS, KA}
+                                            catch
+                                              _:Reason2 ->
+                                                  error_info(Handler, Reason2, nil),
+                                                  exit(Reason2)
                                             end,
             AsyncStart orelse proc_lib:init_ack({ok, self()}),
             case Socket of
