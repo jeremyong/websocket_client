@@ -27,7 +27,7 @@ start_link(URL, Handler, HandlerArgs, AsyncStart) when is_boolean(AsyncStart) ->
 start_link(URL, Handler, HandlerArgs, Opts) when is_binary(URL) ->
 	start_link(erlang:binary_to_list(URL), Handler, HandlerArgs, Opts);
 start_link(URL, Handler, HandlerArgs, Opts) when is_list(Opts) ->
-    case http_uri:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]) of
+    case uri_string:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]) of
         {ok, {Protocol, _, Host, Port, Path, Query}} ->
             proc_lib:start_link(?MODULE, ws_client_init,
                                 [Handler, Protocol, Host, Port, Path ++ Query, HandlerArgs, Opts]);
@@ -220,22 +220,22 @@ websocket_close(WSReq, HandlerState, Reason) ->
         _ ->
             case Reason of
                 normal -> ok;
-                _      -> error_info(Handler, Reason, HandlerState)
+                _      -> error_info(Handler, Reason, HandlerState, [])
             end,
             exit(Reason)
     catch
-        _:Reason2 ->
-            error_info(Handler, Reason2, HandlerState),
+        _:Reason2:Stacktrace ->
+            error_info(Handler, Reason2, HandlerState, Stacktrace),
             exit(Reason2)
     end.
 
-error_info(Handler, Reason, State) ->
+error_info(Handler, Reason, State, Stacktrace) ->
     error_logger:error_msg(
         "** Websocket handler ~p terminating~n"
         "** for the reason ~p~n"
         "** Handler state was ~p~n"
         "** Stacktrace: ~p~n~n",
-        [Handler, Reason, State, erlang:get_stacktrace()]).
+        [Handler, Reason, State, Stacktrace]).
 
 %% @doc Key sent in initial handshake
 -spec generate_ws_key() ->
