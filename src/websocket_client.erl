@@ -27,12 +27,12 @@ start_link(URL, Handler, HandlerArgs, AsyncStart) when is_boolean(AsyncStart) ->
 start_link(URL, Handler, HandlerArgs, Opts) when is_binary(URL) ->
 	start_link(erlang:binary_to_list(URL), Handler, HandlerArgs, Opts);
 start_link(URL, Handler, HandlerArgs, Opts) when is_list(Opts) ->
-    case http_uri:parse(URL, [{scheme_defaults, [{ws,80},{wss,443}]}]) of
-        {ok, {Protocol, _, Host, Port, Path, Query}} ->
+    case url_parse(URL) of
+        {ok, {Protocol, Host, Port, Path}} ->
             proc_lib:start_link(?MODULE, ws_client_init,
-                                [Handler, Protocol, Host, Port, Path ++ Query, HandlerArgs, Opts]);
-        {error, _} = Error ->
-            Error
+                                [Handler, Protocol, Host, Port, Path, HandlerArgs, Opts]);
+        {error, Reason, _} ->
+            {error, Reason}
     end.
 
 %% Send a frame asynchronously
@@ -220,22 +220,22 @@ websocket_close(WSReq, HandlerState, Reason) ->
         _ ->
             case Reason of
                 normal -> ok;
-                _      -> error_info(Handler, Reason, HandlerState)
+                _      -> error_info(Handler, Reason, HandlerState, [])
             end,
             exit(Reason)
     catch
-        _:Reason2 ->
-            error_info(Handler, Reason2, HandlerState),
+        _:Reason2:Stacktrace ->
+            error_info(Handler, Reason2, HandlerState, Stacktrace),
             exit(Reason2)
     end.
 
-error_info(Handler, Reason, State) ->
+error_info(Handler, Reason, State, Stacktrace) ->
     error_logger:error_msg(
         "** Websocket handler ~p terminating~n"
         "** for the reason ~p~n"
         "** Handler state was ~p~n"
         "** Stacktrace: ~p~n~n",
-        [Handler, Reason, State, erlang:get_stacktrace()]).
+        [Handler, Reason, State, Stacktrace]).
 
 %% @doc Key sent in initial handshake
 -spec generate_ws_key() ->
@@ -482,3 +482,22 @@ set_continuation_if_empty(WSReq, Opcode) ->
         _ ->
             WSReq
     end.
+
+url_parse(URL) ->
+    url_normalize(uri_string:parse(URL)).
+
+url_normalize(#{scheme := Scheme}) when Scheme =/= "ws" andalso Scheme =/= "wss" ->
+    {error, invalid_scheme, Scheme};
+url_normalize(#{path := ""} = UriMap)->
+    url_normalize(UriMap#{path := "/"});
+url_normalize(#{scheme := Scheme, host := Host, path := Path} = UriMap) ->
+    Protocol = list_to_existing_atom(Scheme),
+    Port = maps:get(port, UriMap, default_port(Protocol)),
+    QueryString = case UriMap of
+        #{query := Query} -> "?" ++ Query;
+        _ -> ""
+    end,
+    {ok, {Protocol, Host, Port, Path ++ QueryString}}.
+
+default_port(ws) -> 80;
+default_port(wss) -> 443.
