@@ -27,10 +27,10 @@ start_link(URL, Handler, HandlerArgs, AsyncStart) when is_boolean(AsyncStart) ->
 start_link(URL, Handler, HandlerArgs, Opts) when is_binary(URL) ->
 	start_link(erlang:binary_to_list(URL), Handler, HandlerArgs, Opts);
 start_link(URL, Handler, HandlerArgs, Opts) when is_list(Opts) ->
-    case uri_string:parse(URL) of
-        #{host := Host, path := Path, port := Port, query := Query, scheme := Protocol} ->
+    case url_parse(URL) of
+        {ok, {Protocol, Host, Port, Path}} ->
             proc_lib:start_link(?MODULE, ws_client_init,
-                                [Handler, Protocol, Host, Port, Path ++ Query, HandlerArgs, Opts]);
+                                [Handler, Protocol, Host, Port, Path, HandlerArgs, Opts]);
         {error, Reason, _} ->
             {error, Reason}
     end.
@@ -482,3 +482,22 @@ set_continuation_if_empty(WSReq, Opcode) ->
         _ ->
             WSReq
     end.
+
+url_parse(URL) ->
+    url_normalize(uri_string:parse(URL)).
+
+url_normalize(#{scheme := Scheme}) when Scheme =/= "ws" andalso Scheme =/= "wss" ->
+    {error, invalid_scheme, Scheme};
+url_normalize(#{path := ""} = UriMap)->
+    url_normalize(UriMap#{path := "/"});
+url_normalize(#{scheme := Scheme, host := Host, path := Path} = UriMap) ->
+    Protocol = list_to_existing_atom(Scheme),
+    Port = maps:get(port, UriMap, default_port(Protocol)),
+    QueryString = case UriMap of
+        #{query := Query} -> "?" ++ Query;
+        _ -> ""
+    end,
+    {ok, {Protocol, Host, Port, Path ++ QueryString}}.
+
+default_port(ws) -> 80;
+default_port(wss) -> 443.

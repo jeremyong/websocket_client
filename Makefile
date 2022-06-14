@@ -5,7 +5,7 @@ include erlang.mk
 
 test-deps:
 	git clone https://github.com/extend/cowboy.git test-deps/cowboy
-	pushd test-deps/cowboy; git checkout 0.9.0; make; popd
+	pushd test-deps/cowboy; git checkout 2.9.0; make; popd
 
 test: test-deps all
 	mkdir -p .ct_results
